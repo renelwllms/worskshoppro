@@ -1,0 +1,25 @@
+.DS_Store
+.claude/
+*.log
+
+# Secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies and builds
+**/node_modules/
+**/dist/
+**/build/
+**/.next/
+**/coverage/
+
+# Runtime data
+**/uploads/
+**/tmp/
+**/.tmp/
+**/.temp/
+
+# Editor metadata
+**/.idea/
+**/.vscode/

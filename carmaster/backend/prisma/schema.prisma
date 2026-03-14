@@ -1,0 +1,397 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AuthProvider {
+  LOCAL
+  AZURE
+}
+
+enum JobStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  DECLINED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  CANCELLED
+}
+
+enum TokenAction {
+  APPROVE
+  DECLINE
+}
+
+enum PriceType {
+  FIXED
+  FROM
+  QUOTE_REQUIRED
+}
+
+enum JobType {
+  MAINTENANCE
+  REPAIR
+}
+
+enum VehicleType {
+  JAPANESE
+  EUROPEAN
+}
+
+enum ServicePackageInclusionType {
+  INCLUDED_SERVICE
+  INCLUDED_UPSELL
+  CHECK_ITEM
+  NOTE
+}
+
+enum InvoiceInclusionMode {
+  NOTES
+  LINE_ITEMS
+}
+
+enum ScheduleType {
+  SERVICE
+  WOF
+  REGO
+}
+
+enum ReminderChannel {
+  EMAIL
+  SMS
+}
+
+enum ReminderStatus {
+  SENT
+  FAILED
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String?
+  displayName  String
+  provider     AuthProvider @default(LOCAL)
+  role         String       @default("staff")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  jobs         Job[]        @relation("AssignedJobs")
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  rego      String   @unique
+  vehicleBrand String?
+  vehicleModel String?
+  firstName String
+  lastName  String
+  phone     String
+  email     String
+  jobs      Job[]
+  quotes    Quote[]
+  invoices  Invoice[]
+  serviceSchedules ServiceSchedule[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Job {
+  id              String       @id @default(cuid())
+  jobNumber       String?      @unique
+  title           String
+  description     String?
+  status          JobStatus    @default(OPEN)
+  jobType         JobType?
+  dueDate         DateTime?
+  serviceType     String?
+  customerId      String
+  customer        Customer     @relation(fields: [customerId], references: [id])
+  assigneeId      String?
+  assignee        User?        @relation("AssignedJobs", fields: [assigneeId], references: [id])
+  images          JobImage[]
+  quotes          Quote[]
+  invoices        Invoice[]
+  odometerKm      Int?
+  wofExpiryDate   DateTime?
+  regoExpiryDate  DateTime?
+  selectedServiceId String?
+  selectedService ServiceCategory? @relation(fields: [selectedServiceId], references: [id])
+  selectedServicePackageId String? @db.Uuid
+  selectedServicePackage ServicePackage? @relation(fields: [selectedServicePackageId], references: [id])
+  vehicleType      VehicleType?
+  packageBasePriceSnapshot Decimal?
+  packageVehicleTypeSnapshot VehicleType?
+  packagePriceTypeSnapshot PriceType?
+  packagePricingNotesSnapshot String?
+  upsells         JobUpsell[]
+  sourceSchedules ServiceSchedule[] @relation("ScheduleSourceJob")
+  pricingSnapshot Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model JobImage {
+  id           String   @id @default(cuid())
+  jobId        String
+  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  url          String
+  originalName String
+  mimeType     String
+  size         Int
+  createdAt    DateTime @default(now())
+}
+
+model ServiceCategory {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  description     String?
+  checklist       String[]
+  basePrice       Decimal   @default(0)
+  priceType       PriceType @default(FIXED)
+  durationMinutes Int?
+  active          Boolean   @default(true)
+  jobs            Job[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model ServicePackage {
+  id          String                    @id @default(uuid()) @db.Uuid
+  name        String                    @unique
+  description String?
+  isActive    Boolean                   @default(true)
+  prices      ServicePackagePrice[]
+  inclusions  ServicePackageInclusion[]
+  jobs        Job[]
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@map("service_packages")
+}
+
+model ServicePackagePrice {
+  id               String         @id @default(uuid()) @db.Uuid
+  servicePackageId String         @db.Uuid
+  servicePackage   ServicePackage @relation(fields: [servicePackageId], references: [id], onDelete: Cascade)
+  vehicleType      VehicleType
+  basePrice        Decimal        @default(0)
+  notes            String?
+  priceType        PriceType      @default(FIXED)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([servicePackageId, vehicleType])
+  @@map("service_package_prices")
+}
+
+model ServicePackageInclusion {
+  id               String                      @id @default(uuid()) @db.Uuid
+  servicePackageId String                      @db.Uuid
+  servicePackage   ServicePackage              @relation(fields: [servicePackageId], references: [id], onDelete: Cascade)
+  type             ServicePackageInclusionType
+  title            String
+  isRequired       Boolean                     @default(true)
+  sortOrder        Int
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  @@index([servicePackageId, sortOrder])
+  @@map("service_package_inclusions")
+}
+
+model UpsellOption {
+  id                String    @id @default(cuid())
+  name              String    @unique
+  description       String?
+  price             Decimal   @default(0)
+  priceType         PriceType @default(FIXED)
+  applicabilityRules Json?
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  jobs              JobUpsell[]
+}
+
+model JobUpsell {
+  jobId    String
+  upsellId String
+  job      Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  upsell   UpsellOption @relation(fields: [upsellId], references: [id], onDelete: Cascade)
+
+  @@id([jobId, upsellId])
+}
+
+model Quote {
+  id           String        @id @default(cuid())
+  jobId        String
+  job          Job           @relation(fields: [jobId], references: [id])
+  customerId   String
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  status       QuoteStatus   @default(DRAFT)
+  expiresAt    DateTime?
+  items        QuoteItem[]
+  total        Decimal       @default(0)
+  approvalLink String?
+  invoice      Invoice?
+  approvalTokens QuoteApprovalToken[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model QuoteItem {
+  id          String   @id @default(cuid())
+  quoteId     String
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Decimal  @default(0)
+  total       Decimal  @default(0)
+}
+
+model QuoteApprovalToken {
+  id          String      @id @default(cuid())
+  quoteId     String
+  quote       Quote       @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  hashedToken String      @unique
+  action      TokenAction
+  expiresAt   DateTime
+  used        Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  invoiceNumber Int?       @unique
+  jobId      String?
+  job        Job?          @relation(fields: [jobId], references: [id])
+  quoteId    String? @unique
+  quote      Quote?        @relation(fields: [quoteId], references: [id])
+  customerId String
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  status     InvoiceStatus @default(DRAFT)
+  dueDate    DateTime?
+  items      InvoiceItem[]
+  total      Decimal       @default(0)
+  pdfPath    String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Decimal  @default(0)
+  total       Decimal  @default(0)
+}
+
+model Setting {
+  id                  Int      @id @default(1)
+  businessName        String?
+  phone               String?
+  email               String?
+  address             String?
+  logoUrl             String?
+  faviconUrl          String?
+  pwaIconUrl          String?
+  pwaIconMaskableUrl  String?
+  themePrimary        String?  @default("#f4c430")
+  themeSecondary      String?  @default("#0a0a0a")
+  pwaName             String?  @default("workshopPro Portal")
+  pwaShortName        String?  @default("workshopPro")
+  taxRate             Float?   @default(0)
+  gstNumber           String?
+  invoiceNumberStart  Int      @default(1)
+  quoteEmailTemplate  String?
+  invoiceEmailTemplate String?
+  serviceReminderEmailTemplate String?
+  wofReminderEmailTemplate String?
+  regoReminderEmailTemplate String?
+  serviceReminderSmsTemplate String?
+  wofReminderSmsTemplate String?
+  regoReminderSmsTemplate String?
+  azureClientId       String?
+  azureTenantId       String?
+  azureClientSecret   String?
+  azureRedirectUri    String?
+  bookingsEnabled     Boolean  @default(false)
+  bookingsPageUrl     String?
+  bookingsBusinessId  String?
+  upsellMileageThreshold Int? @default(60000)
+  upsellLastServiceMonths Int? @default(12)
+  packageInclusionInvoiceMode InvoiceInclusionMode @default(NOTES)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model ServiceSchedule {
+  id            String       @id @default(cuid())
+  customerId    String
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type          ScheduleType
+  title         String?
+  dueDate       DateTime
+  sourceJobId   String?
+  sourceJob     Job?         @relation("ScheduleSourceJob", fields: [sourceJobId], references: [id], onDelete: SetNull)
+  lastReminderAt DateTime?
+  reminderCount Int          @default(0)
+  reminders     ReminderLog[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([customerId, type])
+  @@index([dueDate])
+  @@index([type])
+}
+
+model ReminderLog {
+  id           String          @id @default(cuid())
+  scheduleId   String
+  schedule     ServiceSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  channel      ReminderChannel @default(EMAIL)
+  status       ReminderStatus
+  recipient    String
+  subject      String
+  errorMessage String?
+  createdAt    DateTime        @default(now())
+
+  @@index([scheduleId, createdAt])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  action     String
+  status     String   @default("SUCCESS")
+  entity     String
+  entityId   String?
+  actorId    String?
+  actorEmail String?
+  actorName  String?
+  actorRole  String?
+  method     String
+  path       String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([entity, createdAt])
+  @@index([actorEmail, createdAt])
+}

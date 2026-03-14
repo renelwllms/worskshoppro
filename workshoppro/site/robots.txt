@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://workshoppro.edgepoint.co.nz/sitemap.xml
