@@ -122,9 +122,9 @@
       <p><strong>Powered by Workshop Pro</strong> | Marketing Analysis & Feature Positioning Document</p>
       <p>
         This document summarizes the current Carmaster platform capability, marketable value, and visual proof of each key module,
-        based on the live app environment.
+        based on the live app environment and aligned to the current WorkshopPro marketing website.
       </p>
-      <p class="meta">Prepared: 8 March 2026</p>
+      <p class="meta">Prepared: 14 March 2026</p>
     </section>
 
     <section class="section">
@@ -133,10 +133,15 @@
         Carmaster operates a unified operations and customer engagement platform: a staff portal for workshop management and a public PWA for customer-led job capture.
         The product combines CRM, jobs, quotes, invoices, reminders, and branded self-service booking into one workflow.
       </p>
+      <p>
+        A key differentiator is the workshop arrival flow: customers can scan a QR code when they arrive, open the public experience on their phone,
+        then choose whether they want to log a repair job or a general service request. The same customer journey is fully mobile friendly and works
+        as an installable PWA for faster repeat use.
+      </p>
       <div class="kpi">
-        <div><strong>Target users</strong><br/>Workshop owners, service advisors, technicians</div>
-        <div><strong>Core value</strong><br/>Faster intake, less admin, better follow-up conversion</div>
-        <div><strong>Differentiator</strong><br/>Staff + customer PWA workflow in one stack</div>
+        <div><strong>Target users</strong><br/>Workshop owners, service advisors, technicians, and arriving customers</div>
+        <div><strong>Core value</strong><br/>Faster intake, less admin, better conversion, and stronger repeat service follow-up</div>
+        <div><strong>Differentiator</strong><br/>Staff portal + QR arrival flow + installable customer PWA in one stack</div>
       </div>
     </section>
 
@@ -146,24 +151,26 @@
         <div>
           <h3>Operations Control</h3>
           <ul class="bullet">
-            <li>Centralized job lifecycle management with search, status handling, and due-date visibility.</li>
-            <li>Customer records tied to vehicle rego, contact data, and historical jobs.</li>
+            <li>Dashboard with current-month job count, 12-month trend reporting, and overdue work visibility.</li>
+            <li>Centralized job lifecycle management with search, status handling, due-date visibility, and mobile image uploads.</li>
+            <li>Customer records tied to vehicle rego, contact data, service history, and historical jobs.</li>
             <li>Automated service schedule and renewal reminder monitoring.</li>
           </ul>
         </div>
         <div>
           <h3>Revenue Workflow</h3>
           <ul class="bullet">
-            <li>Quote creation and sharing pipeline with digital decision handling.</li>
-            <li>Invoice workflow with PDF generation and outbound communication support.</li>
+            <li>Quote creation and sharing pipeline with customer approve/decline links.</li>
+            <li>Invoice workflow with draft generation, numbering, PDF generation, and outbound communication support.</li>
             <li>Upsell and package support for maintenance monetization.</li>
           </ul>
         </div>
         <div>
           <h3>Customer Experience</h3>
           <ul class="bullet">
-            <li>Installable public PWA for quick self-service booking and repair requests.</li>
-            <li>Mobile-first intake with WOF/Rego context and guided form progression.</li>
+            <li>Public QR code that customers can scan when they arrive at the workshop.</li>
+            <li>Installable public PWA for quick self-service booking, repair requests, and regular service requests.</li>
+            <li>Fully mobile-friendly intake with WOF/Rego context and guided form progression.</li>
             <li>Branded experience: Carmaster identity with “powered by Workshop Pro”.</li>
           </ul>
         </div>
@@ -172,7 +179,37 @@
           <ul class="bullet">
             <li>JWT-authenticated staff portal + Office 365 SSO support.</li>
             <li>Public endpoint throttling and validated request contracts.</li>
-            <li>Configurable settings for business branding and service catalogs.</li>
+            <li>Configurable settings for business branding, service catalogs, checklists, and PWA identity.</li>
+            <li>Role-aware admin controls for branding, services, and integration settings.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Complete Feature Inventory</h2>
+      <div class="grid">
+        <div>
+          <h3>Staff Portal Modules</h3>
+          <ul class="bullet">
+            <li>Dashboard with job activity, monthly reporting, and overdue tracking.</li>
+            <li>Jobs module for create, search, edit, delete, status updates, and due-date warnings.</li>
+            <li>Customers CRM with rego, phone, email, job history, and service context.</li>
+            <li>Quotes with digital approval links and draft invoice conversion.</li>
+            <li>Invoices with PDF generation, document download, and send workflow.</li>
+            <li>Service schedule management with renewal reminder monitoring.</li>
+            <li>Settings for business profile, theme colors, service categories, checklists, and Office 365 placeholders.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Customer-Facing Experience</h3>
+          <ul class="bullet">
+            <li>Workshop QR code signage that sends customers directly to the public intake experience.</li>
+            <li>Customer choice between logging a repair job or a regular service request.</li>
+            <li>Mobile-friendly, step-by-step intake flow designed for phone use while on site.</li>
+            <li>Installable PWA for faster repeat bookings and ongoing convenience.</li>
+            <li>Service package and upsell support to increase average job value.</li>
+            <li>Call shortcut and branded presentation for a cleaner workshop arrival experience.</li>
           </ul>
         </div>
       </div>
@@ -186,7 +223,7 @@
         <h3>1) Staff Login & Secure Access</h3>
         <figure>
           <img src="screenshots/01-login.png" alt="Login page" />
-          <figcaption>Staff access gateway with role-based portal entry and Office 365 path.</figcaption>
+          <figcaption>Staff access gateway with secure portal entry, role-aware access, and Office 365 sign-in support.</figcaption>
         </figure>
       </div>
 
@@ -194,7 +231,7 @@
         <h3>2) Dashboard & Performance Visibility</h3>
         <figure>
           <img src="screenshots/02-dashboard.png" alt="Dashboard" />
-          <figcaption>Executive snapshot with monthly job trends and workload visibility.</figcaption>
+          <figcaption>Executive snapshot with monthly job trends, workload visibility, and overdue oversight.</figcaption>
         </figure>
       </div>
 
@@ -202,7 +239,7 @@
         <h3>3) Jobs Management</h3>
         <figure>
           <img src="screenshots/03-jobs.png" alt="Jobs" />
-          <figcaption>Operational command center for service/repair jobs and job-level actions.</figcaption>
+          <figcaption>Operational command center for service and repair jobs, with search, status control, and job-level actions.</figcaption>
         </figure>
       </div>
 
@@ -210,7 +247,7 @@
         <h3>4) Customers CRM</h3>
         <figure>
           <img src="screenshots/04-customers.png" alt="Customers" />
-          <figcaption>Customer and vehicle-centric records, supporting retention and context-driven service.</figcaption>
+          <figcaption>Customer and vehicle-centric records, supporting retention, service history, and context-driven service.</figcaption>
         </figure>
       </div>
 
@@ -226,7 +263,7 @@
         <h3>6) Quotes Workflow</h3>
         <figure>
           <img src="screenshots/06-quotes.png" alt="Quotes" />
-          <figcaption>Quote management pipeline designed to shorten decision-to-approval time.</figcaption>
+          <figcaption>Quote management pipeline designed to shorten decision-to-approval time through digital customer responses.</figcaption>
         </figure>
       </div>
 
@@ -234,7 +271,7 @@
         <h3>7) Invoicing Workflow</h3>
         <figure>
           <img src="screenshots/07-invoices.png" alt="Invoices" />
-          <figcaption>Invoice control, document generation, and billing readiness in one flow.</figcaption>
+          <figcaption>Invoice control, PDF document generation, and billing readiness in one flow.</figcaption>
         </figure>
       </div>
 
@@ -242,7 +279,7 @@
         <h3>8) Settings & Brand Configuration</h3>
         <figure>
           <img src="screenshots/08-settings.png" alt="Settings" />
-          <figcaption>Business profile, branding, and operational configuration controls.</figcaption>
+          <figcaption>Business profile, branding, QR/PWA presentation, and operational configuration controls.</figcaption>
         </figure>
       </div>
 
@@ -250,7 +287,7 @@
         <h3>9) Public PWA Home</h3>
         <figure>
           <img src="screenshots/09-public-pwa-home.png" alt="Public PWA Home" />
-          <figcaption>Customer-facing mobile entry point for quick, branded service engagement.</figcaption>
+          <figcaption>Customer-facing mobile entry point that can be opened from a workshop QR code and installed as a PWA.</figcaption>
         </figure>
       </div>
 
@@ -258,17 +295,37 @@
         <h3>10) Public PWA Booking Journey</h3>
         <figure>
           <img src="screenshots/10-public-pwa-booking-form.png" alt="Public PWA Booking Form" />
-          <figcaption>Guided mobile booking flow with data capture optimized for workshop operations.</figcaption>
+          <figcaption>Guided mobile booking flow where customers can log either a repair job or a regular service request from their phone.</figcaption>
         </figure>
       </div>
     </section>
 
     <section class="section page-break">
+      <h2>Customer QR Arrival Flow</h2>
+      <ul class="bullet">
+        <li><strong>Step 1:</strong> Customer scans the QR code at reception or when arriving at the workshop.</li>
+        <li><strong>Step 2:</strong> The public Carmaster experience opens instantly on their phone.</li>
+        <li><strong>Step 3:</strong> The customer selects whether they need a repair job or a regular service.</li>
+        <li><strong>Step 4:</strong> Vehicle and service details are submitted into the workshop system for staff follow-up.</li>
+        <li><strong>Step 5:</strong> The customer can install the PWA for quicker repeat bookings in future.</li>
+      </ul>
+
+      <h3>Why this matters</h3>
+      <ul class="bullet">
+        <li>Reduces front-desk bottlenecks during busy arrival periods.</li>
+        <li>Improves data capture quality at the point of intake.</li>
+        <li>Supports a fully mobile-friendly workshop experience.</li>
+        <li>Creates a stronger branded journey from arrival through to follow-up.</li>
+      </ul>
+    </section>
+
+    <section class="section">
       <h2>Positioning Angles for the Marketing Website</h2>
       <ul class="bullet">
         <li><strong>“One system, full workshop lifecycle”:</strong> from lead intake to invoice and reminder automation.</li>
-        <li><strong>“Mobile-first customer conversion”:</strong> QR + PWA experience reduces friction for new bookings.</li>
-        <li><strong>“Admin-light operations”:</strong> integrated jobs, CRM, quotes, and invoices reduce system switching.</li>
+        <li><strong>“QR arrival check-in”:</strong> customers can scan on arrival and log a repair or general service request themselves.</li>
+        <li><strong>“Mobile-friendly customer conversion”:</strong> QR + PWA experience reduces friction for new and returning bookings.</li>
+        <li><strong>“Admin-light operations”:</strong> integrated jobs, CRM, quotes, invoices, and reminders reduce system switching.</li>
         <li><strong>“Brand-safe rollout”:</strong> Carmaster front-facing identity with Workshop Pro technology attribution.</li>
       </ul>
 
