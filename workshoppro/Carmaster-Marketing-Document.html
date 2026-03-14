@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Carmaster Marketing Document</title>
+  <style>
+    :root {
+      --bg: #0b0b0d;
+      --card: #121318;
+      --ink: #f5f7ff;
+      --muted: #c7ccd6;
+      --accent: #f4c430;
+      --line: #2a2f3a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(160deg, #0a0a0a 0%, #11141b 60%, #0d0f14 100%);
+      line-height: 1.45;
+    }
+    .wrap {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 40px 36px 80px;
+    }
+    .hero {
+      border: 1px solid var(--line);
+      background: radial-gradient(circle at top right, rgba(244, 196, 48, 0.18), rgba(18, 19, 24, 0.95));
+      border-radius: 18px;
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 36px;
+      letter-spacing: 0.3px;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      color: var(--accent);
+    }
+    h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      color: #ffe08a;
+    }
+    p { margin: 0 0 10px; color: var(--muted); }
+    .meta {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #a8afbc;
+    }
+    .section {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(18, 19, 24, 0.9);
+      padding: 20px;
+      margin: 16px 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .bullet li { margin-bottom: 8px; color: var(--muted); }
+    .kpi {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .kpi div {
+      border: 1px solid var(--line);
+      background: #171921;
+      border-radius: 12px;
+      padding: 10px;
+      font-size: 13px;
+      color: #d7dcea;
+    }
+    figure {
+      margin: 14px 0 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #0e1016;
+      overflow: hidden;
+    }
+    img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    figcaption {
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #b8becc;
+      border-top: 1px solid var(--line);
+      background: #141722;
+    }
+    .feature {
+      page-break-inside: avoid;
+      break-inside: avoid;
+      margin-bottom: 18px;
+    }
+    .page-break {
+      page-break-before: always;
+      break-before: page;
+    }
+    @media print {
+      body { background: #0b0b0d; }
+      .wrap { padding: 18px 14px 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Carmaster Digital Service Platform</h1>
+      <p><strong>Powered by Workshop Pro</strong> | Marketing Analysis & Feature Positioning Document</p>
+      <p>
+        This document summarizes the current Carmaster platform capability, marketable value, and visual proof of each key module,
+        based on the live app environment.
+      </p>
+      <p class="meta">Prepared: 8 March 2026</p>
+    </section>
+
+    <section class="section">
+      <h2>Executive Summary</h2>
+      <p>
+        Carmaster operates a unified operations and customer engagement platform: a staff portal for workshop management and a public PWA for customer-led job capture.
+        The product combines CRM, jobs, quotes, invoices, reminders, and branded self-service booking into one workflow.
+      </p>
+      <div class="kpi">
+        <div><strong>Target users</strong><br/>Workshop owners, service advisors, technicians</div>
+        <div><strong>Core value</strong><br/>Faster intake, less admin, better follow-up conversion</div>
+        <div><strong>Differentiator</strong><br/>Staff + customer PWA workflow in one stack</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Marketable Product Capabilities</h2>
+      <div class="grid">
+        <div>
+          <h3>Operations Control</h3>
+          <ul class="bullet">
+            <li>Centralized job lifecycle management with search, status handling, and due-date visibility.</li>
+            <li>Customer records tied to vehicle rego, contact data, and historical jobs.</li>
+            <li>Automated service schedule and renewal reminder monitoring.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Revenue Workflow</h3>
+          <ul class="bullet">
+            <li>Quote creation and sharing pipeline with digital decision handling.</li>
+            <li>Invoice workflow with PDF generation and outbound communication support.</li>
+            <li>Upsell and package support for maintenance monetization.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Customer Experience</h3>
+          <ul class="bullet">
+            <li>Installable public PWA for quick self-service booking and repair requests.</li>
+            <li>Mobile-first intake with WOF/Rego context and guided form progression.</li>
+            <li>Branded experience: Carmaster identity with “powered by Workshop Pro”.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Platform & Security</h3>
+          <ul class="bullet">
+            <li>JWT-authenticated staff portal + Office 365 SSO support.</li>
+            <li>Public endpoint throttling and validated request contracts.</li>
+            <li>Configurable settings for business branding and service catalogs.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section page-break">
+      <h2>Feature Screenshots (Current System)</h2>
+      <p>Each image below is captured from the running application and maps directly to a marketable feature.</p>
+
+      <div class="feature">
+        <h3>1) Staff Login & Secure Access</h3>
+        <figure>
+          <img src="screenshots/01-login.png" alt="Login page" />
+          <figcaption>Staff access gateway with role-based portal entry and Office 365 path.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature">
+        <h3>2) Dashboard & Performance Visibility</h3>
+        <figure>
+          <img src="screenshots/02-dashboard.png" alt="Dashboard" />
+          <figcaption>Executive snapshot with monthly job trends and workload visibility.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature">
+        <h3>3) Jobs Management</h3>
+        <figure>
+          <img src="screenshots/03-jobs.png" alt="Jobs" />
+          <figcaption>Operational command center for service/repair jobs and job-level actions.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature">
+        <h3>4) Customers CRM</h3>
+        <figure>
+          <img src="screenshots/04-customers.png" alt="Customers" />
+          <figcaption>Customer and vehicle-centric records, supporting retention and context-driven service.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature">
+        <h3>5) Service Schedule & Renewals</h3>
+        <figure>
+          <img src="screenshots/05-service-schedule.png" alt="Service Schedule" />
+          <figcaption>Service scheduling and reminder oversight for recurring business continuity.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature">
+        <h3>6) Quotes Workflow</h3>
+        <figure>
+          <img src="screenshots/06-quotes.png" alt="Quotes" />
+          <figcaption>Quote management pipeline designed to shorten decision-to-approval time.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature">
+        <h3>7) Invoicing Workflow</h3>
+        <figure>
+          <img src="screenshots/07-invoices.png" alt="Invoices" />
+          <figcaption>Invoice control, document generation, and billing readiness in one flow.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature">
+        <h3>8) Settings & Brand Configuration</h3>
+        <figure>
+          <img src="screenshots/08-settings.png" alt="Settings" />
+          <figcaption>Business profile, branding, and operational configuration controls.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature page-break">
+        <h3>9) Public PWA Home</h3>
+        <figure>
+          <img src="screenshots/09-public-pwa-home.png" alt="Public PWA Home" />
+          <figcaption>Customer-facing mobile entry point for quick, branded service engagement.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature">
+        <h3>10) Public PWA Booking Journey</h3>
+        <figure>
+          <img src="screenshots/10-public-pwa-booking-form.png" alt="Public PWA Booking Form" />
+          <figcaption>Guided mobile booking flow with data capture optimized for workshop operations.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section page-break">
+      <h2>Positioning Angles for the Marketing Website</h2>
+      <ul class="bullet">
+        <li><strong>“One system, full workshop lifecycle”:</strong> from lead intake to invoice and reminder automation.</li>
+        <li><strong>“Mobile-first customer conversion”:</strong> QR + PWA experience reduces friction for new bookings.</li>
+        <li><strong>“Admin-light operations”:</strong> integrated jobs, CRM, quotes, and invoices reduce system switching.</li>
+        <li><strong>“Brand-safe rollout”:</strong> Carmaster front-facing identity with Workshop Pro technology attribution.</li>
+      </ul>
+
+      <h3>Suggested CTA Blocks</h3>
+      <ul class="bullet">
+        <li>Book a live demo</li>
+        <li>See a workshop workflow walkthrough</li>
+        <li>Launch your branded portal in days</li>
+      </ul>
+    </section>
+  </div>
+</body>
+</html>
