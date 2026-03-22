@@ -76,8 +76,9 @@ export const QuoteDetailPage = () => {
       showToast('Quote sent successfully');
       navigate('/quotes');
     },
-    onError: () => {
-      showToast('Failed to send quote', 'error');
+    onError: (error: any) => {
+      const message = error?.response?.data?.message || 'Failed to send quote';
+      showToast(message, 'error');
     },
   });
 

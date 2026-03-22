@@ -8,14 +8,24 @@ export class CreateInvoiceDto {
 
   @IsOptional()
   @IsString()
+  quoteId?: string;
+
+  @IsOptional()
+  @IsString()
   jobId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  jobIds?: string[];
 
   @IsOptional()
   @IsDateString()
   dueDate?: string;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => InvoiceItemDto)
-  items: InvoiceItemDto[];
+  items?: InvoiceItemDto[];
 }

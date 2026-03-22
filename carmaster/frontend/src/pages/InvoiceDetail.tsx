@@ -16,8 +16,130 @@ const formatMoney = (value: any) => {
   return Number.isFinite(num) ? num.toFixed(2) : '0.00';
 };
 
+const formatDateValue = (value: any) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('en-NZ', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
 const getInvoiceNumberLabel = (invoice: any) =>
   invoice?.invoiceNumber ? `INV-${invoice.invoiceNumber}` : `INV-${invoice?.id?.slice(0, 6)?.toUpperCase() ?? ''}`;
+
+const formatJobInvoiceItemLabel = (type?: string) => {
+  if (type === 'service') return 'Service';
+  if (type === 'additional_service') return 'Additional service';
+  if (type === 'service_package') return 'Service package';
+  if (type === 'upsell') return 'Upsell';
+  return 'Service';
+};
+
+const buildJobHeading = (job: any) => {
+  const title = job?.title || job?.selectedService?.name || job?.selectedServicePackage?.name || 'Booked job';
+  return job?.jobNumber ? `${title} (#${job.jobNumber})` : title;
+};
+
+const buildInvoiceItemsFromJob = (job: any): Item[] => {
+  const pricingItems = Array.isArray(job?.pricingSnapshot?.items) ? job.pricingSnapshot.items : [];
+  const jobHeading = buildJobHeading(job);
+  if (pricingItems.length > 0) {
+    return pricingItems.map((item: any) => {
+      const descriptionParts = [`Job: ${jobHeading}`, `${formatJobInvoiceItemLabel(item?.type)}: ${item?.name || 'Booked service'}`];
+      if (item?.vehicleType) {
+        descriptionParts.push(`Vehicle type: ${String(item.vehicleType).toLowerCase()}`);
+      }
+      if (item?.notes) {
+        descriptionParts.push(String(item.notes));
+      }
+      if (item?.priceType === 'QUOTE_REQUIRED') {
+        descriptionParts.push('Final price to be confirmed.');
+      }
+      return {
+        description: descriptionParts.join('\n'),
+        quantity: 1,
+        unitPrice: Number(item?.basePrice ?? 0),
+      };
+    });
+  }
+
+  const fallbackItems = [
+    job?.selectedService?.name
+      ? {
+          description: `Job: ${jobHeading}\nService: ${job.selectedService.name}`,
+          quantity: 1,
+          unitPrice: Number(job?.selectedService?.basePrice ?? 0),
+        }
+      : null,
+    job?.selectedServicePackage?.name
+      ? {
+          description: `Job: ${jobHeading}\nService package: ${job.selectedServicePackage.name}`,
+          quantity: 1,
+          unitPrice: Number(job?.packageBasePriceSnapshot ?? 0),
+        }
+      : null,
+    ...(job?.upsells || []).map((entry: any) => ({
+      description: `Job: ${jobHeading}\nUpsell: ${entry?.upsell?.name || 'Additional item'}`,
+      quantity: 1,
+      unitPrice: Number(entry?.upsell?.price ?? 0),
+    })),
+  ].filter(Boolean) as Item[];
+
+  return fallbackItems.length > 0 ? fallbackItems : [{ description: `Job: ${jobHeading}`, quantity: 1, unitPrice: 0 }];
+};
+
+const buildInvoiceItemsFromJobs = (jobs: any[]): Item[] => jobs.flatMap((job) => buildInvoiceItemsFromJob(job));
+
+const buildInvoiceSubjectFromJobs = (jobs: any[]) => {
+  if (!jobs.length) {
+    return '';
+  }
+  if (jobs.length === 1) {
+    return jobs[0]?.title || jobs[0]?.selectedService?.name || jobs[0]?.selectedServicePackage?.name || '';
+  }
+  const firstLabel = jobs[0]?.title || jobs[0]?.selectedService?.name || jobs[0]?.selectedServicePackage?.name || 'Selected job';
+  return `${firstLabel} + ${jobs.length - 1} more`;
+};
+
+const buildJobDetailLines = (job: any) => {
+  const vehicle = [job?.customer?.vehicleBrand, job?.customer?.vehicleModel].filter(Boolean).join(' ');
+  return [
+    job?.selectedService?.name ? `Service booked: ${job.selectedService.name}` : '',
+    job?.selectedServicePackage?.name ? `Package booked: ${job.selectedServicePackage.name}` : '',
+    job?.customer?.rego ? `Rego: ${job.customer.rego}` : '',
+    vehicle ? `Vehicle: ${vehicle}` : '',
+  ].filter(Boolean);
+};
+
+const getJobLinkedInvoices = (job: any) => {
+  const linked = [
+    ...(job?.invoices || []),
+    ...(job?.invoiceLinks || []).map((entry: any) => entry?.invoice).filter(Boolean),
+  ];
+  const seen = new Set<string>();
+  return linked.filter((invoice: any) => {
+    if (!invoice?.id || seen.has(invoice.id)) {
+      return false;
+    }
+    seen.add(invoice.id);
+    return true;
+  });
+};
+
+const getJobInvoiceStatusLabel = (job: any, currentInvoiceId?: string) => {
+  const linkedInvoices = getJobLinkedInvoices(job).filter((invoice: any) => invoice.id !== currentInvoiceId);
+  if (linkedInvoices.length === 0) {
+    return 'Not invoiced';
+  }
+  if (linkedInvoices.length === 1) {
+    const status = String(linkedInvoices[0]?.status || 'DRAFT').toLowerCase().replace(/_/g, ' ');
+    return `Invoiced (${status})`;
+  }
+  return `Invoiced x${linkedInvoices.length}`;
+};
 
 export const InvoiceDetailPage = () => {
   const { id } = useParams();
@@ -47,8 +169,11 @@ export const InvoiceDetailPage = () => {
   });
 
   const [items, setItems] = useState<Item[]>([]);
-  const [form, setForm] = useState({ customerId: '', jobId: '', dueDate: '' });
+  const [form, setForm] = useState({ customerId: '', dueDate: '' });
+  const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
+  const [showJobModal, setShowJobModal] = useState(false);
   const [subject, setSubject] = useState('');
+  const [subjectTouched, setSubjectTouched] = useState(false);
   const [notes, setNotes] = useState('Thank you for your business.');
   const [conditions, setConditions] = useState('');
 
@@ -59,6 +184,26 @@ export const InvoiceDetailPage = () => {
   const taxRate = Number(settings?.taxRate) || 0;
   const taxAmount = (total * taxRate) / 100;
   const grandTotal = total + taxAmount;
+  const selectedJobs = useMemo(() => {
+    const jobsById = new Map((jobs || []).map((job: any) => [job.id, job]));
+    return selectedJobIds.map((jobId) => jobsById.get(jobId)).filter(Boolean);
+  }, [jobs, selectedJobIds]);
+  const autoSubject = useMemo(() => buildInvoiceSubjectFromJobs(selectedJobs), [selectedJobs]);
+  const availableJobs = useMemo(() => {
+    if (!form.customerId) {
+      return [];
+    }
+    return (jobs || [])
+      .filter((job: any) => (job.customerId ?? job.customer?.id) === form.customerId)
+      .sort((a: any, b: any) => {
+        const aInvoiced = getJobLinkedInvoices(a).filter((invoice: any) => invoice.id !== id).length > 0 ? 1 : 0;
+        const bInvoiced = getJobLinkedInvoices(b).filter((invoice: any) => invoice.id !== id).length > 0 ? 1 : 0;
+        if (aInvoiced !== bInvoiced) {
+          return aInvoiced - bInvoiced;
+        }
+        return String(a.title || '').localeCompare(String(b.title || ''));
+      });
+  }, [form.customerId, id, jobs]);
 
   const updateInvoice = useMutation({
     mutationFn: async (payload: any) => api.patch(`/invoices/${id}`, payload),
@@ -87,8 +232,9 @@ export const InvoiceDetailPage = () => {
       showToast('Invoice sent successfully');
       navigate('/invoices');
     },
-    onError: () => {
-      showToast('Failed to send invoice', 'error');
+    onError: (error: any) => {
+      const message = error?.response?.data?.message || 'Failed to send invoice';
+      showToast(message, 'error');
     },
   });
 
@@ -137,11 +283,17 @@ export const InvoiceDetailPage = () => {
 
   useEffect(() => {
     if (!invoice) return;
+    const linkedJobIds = Array.isArray(invoice.invoiceJobs) && invoice.invoiceJobs.length > 0
+      ? invoice.invoiceJobs.map((entry: any) => entry.jobId || entry.job?.id).filter(Boolean)
+      : invoice.jobId ?? invoice.job?.id
+        ? [invoice.jobId ?? invoice.job?.id]
+        : [];
     setForm({
       customerId: invoice.customerId ?? invoice.customer?.id ?? '',
-      jobId: invoice.jobId ?? invoice.job?.id ?? '',
       dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().slice(0, 10) : '',
     });
+    setSelectedJobIds(linkedJobIds);
+    setShowJobModal(false);
     setItems(
       (invoice.items ?? []).map((item: any) => ({
         description: item.description ?? '',
@@ -149,7 +301,49 @@ export const InvoiceDetailPage = () => {
         unitPrice: Number(item.unitPrice) || 0,
       })),
     );
+    setSubject('');
+    setSubjectTouched(false);
   }, [invoice]);
+
+  useEffect(() => {
+    if (!subjectTouched) {
+      setSubject(autoSubject);
+    }
+  }, [autoSubject, subjectTouched]);
+
+  const handleCustomerChange = (customerId: string) => {
+    setForm((current) => ({
+      ...current,
+      customerId,
+    }));
+    setSelectedJobIds([]);
+    setShowJobModal(false);
+  };
+
+  const handleAddJob = (jobId: string) => {
+    if (!jobId) return;
+    const nextJobIds = selectedJobIds.includes(jobId) ? selectedJobIds : [...selectedJobIds, jobId];
+    const jobsById = new Map((jobs || []).map((job: any) => [job.id, job]));
+    const nextJobs = nextJobIds.map((id) => jobsById.get(id)).filter(Boolean) as any[];
+    setSelectedJobIds(nextJobIds);
+    setForm((current) => ({
+      ...current,
+      customerId: nextJobs[0]?.customerId ?? nextJobs[0]?.customer?.id ?? current.customerId,
+    }));
+    if (nextJobs.length > 0) {
+      setItems(buildInvoiceItemsFromJobs(nextJobs));
+    }
+  };
+
+  const handleRemoveJob = (jobId: string) => {
+    const nextJobIds = selectedJobIds.filter((id) => id !== jobId);
+    const jobsById = new Map((jobs || []).map((job: any) => [job.id, job]));
+    const nextJobs = nextJobIds.map((id) => jobsById.get(id)).filter(Boolean) as any[];
+    setSelectedJobIds(nextJobIds);
+    if (nextJobs.length > 0) {
+      setItems(buildInvoiceItemsFromJobs(nextJobs));
+    }
+  };
 
   if (isLoading) {
     return (
@@ -184,6 +378,69 @@ export const InvoiceDetailPage = () => {
 
   return (
     <PortalShell>
+      {showJobModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0b0b0b] shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Select Jobs for Invoice</h3>
+                <p className="text-xs text-white/55">
+                  {availableJobs.length} jobs for this customer. Dates and invoice status are shown below.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowJobModal(false)}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white transition hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-auto p-5">
+              {availableJobs.length === 0 ? (
+                <p className="text-sm text-white/60">No jobs found for the selected customer.</p>
+              ) : (
+                <div className="space-y-3">
+                  {availableJobs.map((job: any) => {
+                    const selected = selectedJobIds.includes(job.id);
+                    return (
+                      <div key={job.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-white">{job.title}</p>
+                            <p className="text-xs text-white/50">
+                              {job.customer?.rego || '-'} · {getJobInvoiceStatusLabel(job, id)}
+                            </p>
+                          </div>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => (selected ? handleRemoveJob(job.id) : handleAddJob(job.id))}
+                              className={`rounded-full px-3 py-1.5 text-xs transition ${
+                                selected
+                                  ? 'border border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/20'
+                                  : 'border border-white/10 bg-brand-primary text-black hover:bg-brand-accent'
+                              }`}
+                            >
+                              {selected ? 'Remove' : 'Add Job'}
+                            </button>
+                          )}
+                        </div>
+                        <div className="mt-3 grid gap-2 text-xs text-white/65 sm:grid-cols-2">
+                          <p>Created: {formatDateValue(job.createdAt)}</p>
+                          <p>Due: {formatDateValue(job.dueDate)}</p>
+                          <p>Status: {String(job.status || '-').replace(/_/g, ' ')}</p>
+                          <p>Job number: {job.jobNumber || '-'}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-white/10">
           <div>
@@ -201,6 +458,8 @@ export const InvoiceDetailPage = () => {
                 try {
                   await updateInvoiceSilent({
                     ...form,
+                    jobId: selectedJobIds[0] || undefined,
+                    jobIds: selectedJobIds,
                     dueDate: form.dueDate || undefined,
                     items,
                   });
@@ -231,6 +490,8 @@ export const InvoiceDetailPage = () => {
                 try {
                   await updateInvoiceSilent({
                     ...form,
+                    jobId: selectedJobIds[0] || undefined,
+                    jobIds: selectedJobIds,
                     dueDate: form.dueDate || undefined,
                     items,
                   });
@@ -263,6 +524,8 @@ export const InvoiceDetailPage = () => {
                     if (!canSave()) return;
                     updateInvoice.mutate({
                       ...form,
+                      jobId: selectedJobIds[0] || undefined,
+                      jobIds: selectedJobIds,
                       dueDate: form.dueDate || undefined,
                       items,
                     });
@@ -277,6 +540,8 @@ export const InvoiceDetailPage = () => {
                     if (!canSave()) return;
                     await updateInvoice.mutateAsync({
                       ...form,
+                      jobId: selectedJobIds[0] || undefined,
+                      jobIds: selectedJobIds,
                       dueDate: form.dueDate || undefined,
                       items,
                     });
@@ -299,7 +564,7 @@ export const InvoiceDetailPage = () => {
                 <select
                   className="input flex-1 min-w-[240px]"
                   value={form.customerId}
-                  onChange={(e) => setForm({ ...form, customerId: e.target.value })}
+                  onChange={(e) => handleCustomerChange(e.target.value)}
                   disabled={!canEdit}
                 >
                   <option value="">Select or add a customer</option>
@@ -325,20 +590,19 @@ export const InvoiceDetailPage = () => {
                 <input className="input mt-1" value={invoiceNumber} readOnly />
               </div>
               <div>
-                <label className="text-xs text-white/60">Order Number</label>
-                <select
-                  className="input mt-1"
-                  value={form.jobId}
-                  onChange={(e) => setForm({ ...form, jobId: e.target.value })}
-                  disabled={!canEdit}
+                <label className="text-xs text-white/60">Jobs</label>
+                <button
+                  type="button"
+                  onClick={() => setShowJobModal(true)}
+                  disabled={!canEdit || !form.customerId}
+                  className="input mt-1 text-left disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <option value="">Select job</option>
-                  {jobs?.map((job: any) => (
-                    <option key={job.id} value={job.id}>
-                      {job.title} - {job.customer?.rego}
-                    </option>
-                  ))}
-                </select>
+                  {form.customerId
+                    ? selectedJobIds.length > 0
+                      ? `${selectedJobIds.length} job${selectedJobIds.length === 1 ? '' : 's'} selected`
+                      : 'Open Job Selector'
+                    : 'Select Customer First'}
+                </button>
               </div>
               <div>
                 <label className="text-xs text-white/60">Invoice Date</label>
@@ -363,11 +627,14 @@ export const InvoiceDetailPage = () => {
                 className="input mt-1"
                 placeholder="Let your customer know what this invoice is for"
                 value={subject}
-                onChange={(e) => setSubject(e.target.value)}
+                onChange={(e) => {
+                  setSubject(e.target.value);
+                  setSubjectTouched(true);
+                }}
                 disabled={!canEdit}
               />
+              </div>
             </div>
-          </div>
 
           <div className="border border-white/10 rounded-2xl overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white/5">
@@ -381,6 +648,45 @@ export const InvoiceDetailPage = () => {
                 </button>
               </div>
             </div>
+            {selectedJobs.length > 0 && (
+              <div className="border-b border-white/10 px-4 py-3">
+                <p className="text-xs font-semibold text-white/80">Job Details</p>
+                <div className="mt-3 space-y-3">
+                  {selectedJobs.map((job: any) => {
+                    const label = job?.title || job?.selectedService?.name || job?.selectedServicePackage?.name || job?.jobNumber || 'Selected job';
+                    const detailLines = buildJobDetailLines(job);
+                    return (
+                      <div key={job.id} className="rounded-xl border border-white/10 bg-black/10 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-white">{label}</p>
+                            <div className="mt-2 space-y-1 text-xs text-white/65">
+                              {detailLines.map((line) => (
+                                <p key={`${job.id}-${line}`}>{line}</p>
+                              ))}
+                            </div>
+                          </div>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveJob(job.id)}
+                              className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-200 transition hover:bg-red-500/20"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {canEdit && selectedJobIds.length > 0 && (
+              <div className="border-b border-white/10 px-4 py-3 text-xs text-white/60">
+                Booked services and job details were loaded from the selected jobs. Add extra rows only if needed.
+              </div>
+            )}
             <div className="overflow-auto">
               <table className="w-full text-sm min-w-[720px]">
                 <thead className="text-xs text-white/60">

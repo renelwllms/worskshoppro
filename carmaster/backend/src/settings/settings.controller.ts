@@ -7,6 +7,7 @@ import { UpsellOptionDto } from './dto/upsell-option.dto';
 import { ServicePackageDto } from './dto/service-package.dto';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { Office365SettingsDto } from './dto/office365-settings.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('settings')
@@ -22,6 +23,12 @@ export class SettingsController {
   @Patch()
   update(@Body() dto: UpdateSettingDto) {
     return this.settingsService.updateSettings(dto);
+  }
+
+  @Roles('admin')
+  @Patch('office365')
+  updateOffice365(@Body() dto: Office365SettingsDto) {
+    return this.settingsService.updateOffice365Settings(dto);
   }
 
   @Get('services')

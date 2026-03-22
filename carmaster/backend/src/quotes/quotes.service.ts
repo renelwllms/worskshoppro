@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import { GraphService } from '../integrations/graph.service';
@@ -132,6 +132,23 @@ export class QuotesService {
 
     const margin = doc.page.margins.left;
     const pageWidth = doc.page.width - margin * 2;
+    const footerText = 'Quote generated using WorkshopPro by Edgepoint.';
+    const drawFooter = () => {
+      const footerLineY = doc.page.height - doc.page.margins.bottom - 20;
+      const footerTextY = footerLineY + 6;
+      doc
+        .strokeColor('#e5e7eb')
+        .moveTo(margin, footerLineY)
+        .lineTo(margin + pageWidth, footerLineY)
+        .stroke();
+      doc
+        .font('Helvetica')
+        .fontSize(8)
+        .fillColor('#6b7280')
+        .text(footerText, margin, footerTextY, { width: pageWidth, align: 'center' });
+    };
+    doc.on('pageAdded', drawFooter);
+    drawFooter();
     let y = margin;
 
     const headerX = margin;
@@ -318,18 +335,6 @@ export class QuotesService {
       y += doc.heightOfString(payload.terms, { width: pageWidth }) + 24;
     }
 
-    const footerText = `Thank you for choosing ${businessName}.`;
-    const footerHeight = doc.heightOfString(footerText, { width: pageWidth });
-    if (y + footerHeight + 10 > doc.page.height - margin) {
-      doc.addPage();
-      y = margin;
-    }
-    doc
-      .font('Helvetica')
-      .fontSize(9)
-      .fillColor('#6b7280')
-      .text(footerText, margin, y, { width: pageWidth, align: 'center' });
-
     doc.end();
     await new Promise<void>((resolve, reject) => {
       stream.on('finish', resolve);
@@ -393,11 +398,17 @@ export class QuotesService {
           ttlHours: String(ttlHours),
         })
       : defaultHtml;
-    await this.graph.sendMail({
+    const mailResult = await this.graph.sendMail({
       to: quote.customer.email,
       subject: `Quote for ${quote.job.title}`,
       html,
     });
+    if ('skipped' in mailResult && mailResult.skipped) {
+      throw new BadRequestException('Email sender is not configured');
+    }
+    if ('sent' in mailResult && !mailResult.sent) {
+      throw new InternalServerErrorException(mailResult.error || 'Unable to send quote email');
+    }
     await this.prisma.quote.update({ where: { id }, data: { status: QuoteStatus.SENT } });
     return { sent: true, approveLink, declineLink };
   }

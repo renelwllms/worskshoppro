@@ -9,25 +9,43 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
-  private msalClient?: ConfidentialClientApplication;
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {
-    const tenantId = this.configService.get<string>('AZURE_TENANT_ID');
-    const clientId = this.configService.get<string>('AZURE_CLIENT_ID');
-    const clientSecret = this.configService.get<string>('AZURE_CLIENT_SECRET');
-    if (tenantId && clientId && clientSecret) {
-      this.msalClient = new ConfidentialClientApplication({
-        auth: {
-          clientId,
-          authority: `https://login.microsoftonline.com/${tenantId}`,
-          clientSecret,
-        },
-      });
+    // Azure config is resolved lazily so saved Settings values can be used without requiring .env updates.
+  }
+
+  private normalizeValue(value?: string | null) {
+    const normalized = value?.trim();
+    return normalized ? normalized : undefined;
+  }
+
+  private async getAzureConfig() {
+    const settings = await this.prisma.setting.findUnique({ where: { id: 1 } });
+    const clientId = this.normalizeValue(settings?.azureClientId) || this.normalizeValue(this.configService.get<string>('AZURE_CLIENT_ID'));
+    const tenantId = this.normalizeValue(settings?.azureTenantId) || this.normalizeValue(this.configService.get<string>('AZURE_TENANT_ID'));
+    const clientSecret =
+      this.normalizeValue(settings?.azureClientSecret) || this.normalizeValue(this.configService.get<string>('AZURE_CLIENT_SECRET'));
+    const redirectUri =
+      this.normalizeValue(settings?.azureRedirectUri) || this.normalizeValue(this.configService.get<string>('AZURE_REDIRECT_URI'));
+
+    return { clientId, tenantId, clientSecret, redirectUri };
+  }
+
+  private async getMsalClient() {
+    const { clientId, tenantId, clientSecret } = await this.getAzureConfig();
+    if (!tenantId || !clientId || !clientSecret) {
+      throw new BadRequestException('Azure AD is not configured');
     }
+    return new ConfidentialClientApplication({
+      auth: {
+        clientId,
+        authority: `https://login.microsoftonline.com/${tenantId}`,
+        clientSecret,
+      },
+    });
   }
 
   async register(dto: RegisterDto) {
@@ -61,23 +79,19 @@ export class AuthService {
   }
 
   async azureLoginUrl() {
-    if (!this.msalClient) {
-      throw new BadRequestException('Azure AD is not configured');
-    }
-    const redirectUri = this.configService.get<string>('AZURE_REDIRECT_URI');
+    const msalClient = await this.getMsalClient();
+    const { redirectUri } = await this.getAzureConfig();
     if (!redirectUri) throw new BadRequestException('Missing AZURE_REDIRECT_URI');
     const scopes = ['User.Read', 'email', 'profile', 'offline_access'];
-    return this.msalClient.getAuthCodeUrl({ scopes, redirectUri });
+    return msalClient.getAuthCodeUrl({ scopes, redirectUri });
   }
 
   async handleAzureCallback(code: string) {
-    if (!this.msalClient) {
-      throw new BadRequestException('Azure AD is not configured');
-    }
-    const redirectUri = this.configService.get<string>('AZURE_REDIRECT_URI');
+    const msalClient = await this.getMsalClient();
+    const { redirectUri } = await this.getAzureConfig();
     if (!redirectUri) throw new BadRequestException('Missing AZURE_REDIRECT_URI');
     const scopes = ['User.Read', 'email', 'profile', 'offline_access'];
-    const tokenResponse = await this.msalClient.acquireTokenByCode({
+    const tokenResponse = await msalClient.acquireTokenByCode({
       code,
       scopes,
       redirectUri,

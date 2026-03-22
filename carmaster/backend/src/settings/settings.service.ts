@@ -7,28 +7,79 @@ import { UpsellOptionDto } from './dto/upsell-option.dto';
 import { DEFAULT_UPSELL_OPTIONS } from './upsell-defaults';
 import { ServicePackageDto } from './dto/service-package.dto';
 import { PriceType, Prisma } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import { Office365SettingsDto } from './dto/office365-settings.dto';
 
 @Injectable()
 export class SettingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly bookings: BookingsService,
+    private readonly configService: ConfigService,
   ) {}
 
-  getSettings() {
-    return this.prisma.setting.upsert({
+  private normalizeValue(value?: string | null) {
+    const normalized = value?.trim();
+    return normalized ? normalized : undefined;
+  }
+
+  private sanitizeSettings(setting: Record<string, any>) {
+    const sanitized = { ...setting };
+    delete sanitized.azureClientSecret;
+    sanitized.hasAzureClientSecret = Boolean(
+      this.normalizeValue(setting.azureClientSecret) || this.normalizeValue(this.configService.get<string>('AZURE_CLIENT_SECRET')),
+    );
+    return sanitized;
+  }
+
+  async getSettings() {
+    const setting = await this.prisma.setting.upsert({
       where: { id: 1 },
       update: {},
       create: {},
     });
+    return this.sanitizeSettings(setting as Record<string, any>);
   }
 
-  updateSettings(dto: UpdateSettingDto) {
-    return this.prisma.setting.upsert({
+  async updateSettings(dto: UpdateSettingDto) {
+    const {
+      azureClientId,
+      azureTenantId,
+      azureClientSecret,
+      azureRedirectUri,
+      bookingsEnabled,
+      bookingsPageUrl,
+      bookingsBusinessId,
+      ...safeDto
+    } = dto;
+    const setting = await this.prisma.setting.upsert({
       where: { id: 1 },
-      update: dto,
-      create: dto,
+      update: safeDto,
+      create: safeDto,
     });
+    return this.sanitizeSettings(setting as Record<string, any>);
+  }
+
+  async updateOffice365Settings(dto: Office365SettingsDto) {
+    const secret = this.normalizeValue(dto.azureClientSecret);
+    const data: Office365SettingsDto = {
+      azureClientId: dto.azureClientId,
+      azureTenantId: dto.azureTenantId,
+      azureRedirectUri: dto.azureRedirectUri,
+      bookingsEnabled: dto.bookingsEnabled,
+      bookingsPageUrl: dto.bookingsPageUrl,
+      bookingsBusinessId: dto.bookingsBusinessId,
+    };
+    if (secret) {
+      data.azureClientSecret = secret;
+    }
+
+    const setting = await this.prisma.setting.upsert({
+      where: { id: 1 },
+      update: data,
+      create: data,
+    });
+    return this.sanitizeSettings(setting as Record<string, any>);
   }
 
   private async ensureWofService() {

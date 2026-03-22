@@ -19,6 +19,30 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
+  const standardServiceInclusions = [
+    {
+      type: ServicePackageInclusionType.INCLUDED_SERVICE,
+      title: 'Engine oil & oil filter change',
+    },
+    {
+      type: ServicePackageInclusionType.NOTE,
+      title: 'Top-up fluids (as required): coolant, windscreen washer, power steering',
+    },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'All lights check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Interior safety check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Exterior safety check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Air conditioning check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Brake check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Suspension check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Tyre condition check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Wheel bearing check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Differential check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Axle/CV check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Leak check (any type)' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Underbody check' },
+    { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Damage check' },
+  ];
+
   const serviceCategories = [
     {
       name: 'Engine Performance',
@@ -100,29 +124,7 @@ async function main() {
         { vehicleType: VehicleType.JAPANESE, basePrice: 170, priceType: PriceType.FIXED },
         { vehicleType: VehicleType.EUROPEAN, basePrice: 220, priceType: PriceType.FIXED },
       ],
-      inclusions: [
-        {
-          type: ServicePackageInclusionType.INCLUDED_SERVICE,
-          title: 'Engine oil & oil filter change',
-        },
-        {
-          type: ServicePackageInclusionType.NOTE,
-          title: 'Top-up fluids (as required): coolant, windscreen washer, power steering',
-        },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'All lights check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Interior safety check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Exterior safety check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Air conditioning check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Brake check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Suspension check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Tyre condition check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Wheel bearing check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Differential check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Axle/CV check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Leak check (any type)' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Underbody check' },
-        { type: ServicePackageInclusionType.CHECK_ITEM, title: 'Damage check' },
-      ],
+      inclusions: standardServiceInclusions,
     },
     {
       name: 'Premium Service',
@@ -137,7 +139,7 @@ async function main() {
         },
       ],
       inclusions: [
-        { type: ServicePackageInclusionType.NOTE, title: 'Includes everything in Standard Service' },
+        ...standardServiceInclusions,
         { type: ServicePackageInclusionType.INCLUDED_UPSELL, title: 'Cabin air filter replacement' },
         { type: ServicePackageInclusionType.INCLUDED_SERVICE, title: 'Transmission fluid change' },
       ],

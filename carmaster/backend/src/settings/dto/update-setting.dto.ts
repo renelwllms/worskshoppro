@@ -61,6 +61,10 @@ export class UpdateSettingDto {
   gstNumber?: string;
 
   @IsOptional()
+  @IsString()
+  bankDetails?: string;
+
+  @IsOptional()
   @IsInt()
   @Min(1)
   invoiceNumberStart?: number;

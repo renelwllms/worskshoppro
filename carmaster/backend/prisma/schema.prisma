@@ -139,6 +139,7 @@ model Job {
   packagePriceTypeSnapshot PriceType?
   packagePricingNotesSnapshot String?
   upsells         JobUpsell[]
+  invoiceLinks    InvoiceJob[]
   sourceSchedules ServiceSchedule[] @relation("ScheduleSourceJob")
   pricingSnapshot Json?
   createdAt       DateTime     @default(now())
@@ -279,6 +280,7 @@ model Invoice {
   invoiceNumber Int?       @unique
   jobId      String?
   job        Job?          @relation(fields: [jobId], references: [id])
+  invoiceJobs InvoiceJob[]
   quoteId    String? @unique
   quote      Quote?        @relation(fields: [quoteId], references: [id])
   customerId String
@@ -302,6 +304,17 @@ model InvoiceItem {
   total       Decimal  @default(0)
 }
 
+model InvoiceJob {
+  invoiceId  String
+  jobId      String
+  invoice    Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  job        Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+
+  @@id([invoiceId, jobId])
+  @@index([jobId])
+}
+
 model Setting {
   id                  Int      @id @default(1)
   businessName        String?
@@ -318,6 +331,7 @@ model Setting {
   pwaShortName        String?  @default("workshopPro")
   taxRate             Float?   @default(0)
   gstNumber           String?
+  bankDetails         String?
   invoiceNumberStart  Int      @default(1)
   quoteEmailTemplate  String?
   invoiceEmailTemplate String?

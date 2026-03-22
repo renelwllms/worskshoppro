@@ -544,6 +544,7 @@ export class JobsService {
               },
             },
             upsells: { include: { upsell: true } },
+            invoiceLinks: { include: { invoice: { select: { id: true, status: true, invoiceNumber: true } } } },
           },
         });
       } catch (error) {
@@ -575,6 +576,8 @@ export class JobsService {
         selectedService: true,
         selectedServicePackage: true,
         upsells: { include: { upsell: true } },
+        invoices: { select: { id: true, status: true, invoiceNumber: true } },
+        invoiceLinks: { include: { invoice: { select: { id: true, status: true, invoiceNumber: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -588,6 +591,7 @@ export class JobsService {
         images: true,
         quotes: true,
         invoices: true,
+        invoiceLinks: { include: { invoice: true } },
         selectedService: true,
         selectedServicePackage: {
           include: {
@@ -653,6 +657,8 @@ export class JobsService {
         selectedService: true,
         selectedServicePackage: true,
         upsells: { include: { upsell: true } },
+        invoices: { select: { id: true, status: true, invoiceNumber: true } },
+        invoiceLinks: { include: { invoice: { select: { id: true, status: true, invoiceNumber: true } } } },
       },
     });
   }
@@ -674,9 +680,11 @@ export class JobsService {
       const quoteIds = jobQuotes.map((quote) => quote.id);
       const invoiceWhere: Prisma.InvoiceWhereInput = quoteIds.length
         ? {
-            OR: [{ jobId: id }, { quoteId: { in: quoteIds } }],
+            OR: [{ jobId: id }, { quoteId: { in: quoteIds } }, { invoiceJobs: { some: { jobId: id } } }],
           }
-        : { jobId: id };
+        : {
+            OR: [{ jobId: id }, { invoiceJobs: { some: { jobId: id } } }],
+          };
 
       await tx.invoice.deleteMany({
         where: invoiceWhere,

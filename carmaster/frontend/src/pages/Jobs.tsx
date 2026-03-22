@@ -196,6 +196,7 @@ export const JobsPage = () => {
   const [lastLoadedCompliance, setLastLoadedCompliance] = useState<ComplianceSnapshot | null>(null);
   const [requiresCurrentComplianceUpdate, setRequiresCurrentComplianceUpdate] = useState(false);
   const [complianceWarningOpen, setComplianceWarningOpen] = useState(false);
+  const [showAllSelectedPackageInclusions, setShowAllSelectedPackageInclusions] = useState(false);
   const autoPopulatedRef = useRef(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
 
@@ -291,6 +292,10 @@ export const JobsPage = () => {
     }, 400);
     return () => clearTimeout(timeout);
   }, [form.rego]);
+
+  useEffect(() => {
+    setShowAllSelectedPackageInclusions(false);
+  }, [form.selectedServicePackageId, form.selectionMode]);
 
   const createJob = useMutation({
     mutationFn: async (payload: any) => {
@@ -520,6 +525,7 @@ export const JobsPage = () => {
   const selectedJobPrice = form.selectionMode === 'service_package'
     ? formatPrice(selectedPackagePrice?.basePrice, selectedPackagePrice?.priceType)
     : formatPrice(selectedService?.basePrice, selectedService?.priceType);
+  const packageInclusionPreviewLimit = 5;
   const complianceWarningMessage = `Last loaded WOF expiry (${formatDateLabel(lastLoadedCompliance?.wofExpiryDate)}) or Rego expiry (${formatDateLabel(lastLoadedCompliance?.regoExpiryDate)}) is expired. Update both dates before continuing, or book a WOF job now.`;
 
   const selectWofService = () => {
@@ -1054,11 +1060,21 @@ export const JobsPage = () => {
                       <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
                         <p className="text-xs text-white/60">Inclusions</p>
                         <div className="text-xs space-y-1">
-                          {selectedPackage.inclusions.slice(0, 5).map((inclusion: any) => (
+                          {selectedPackage.inclusions
+                            .slice(0, showAllSelectedPackageInclusions ? selectedPackage.inclusions.length : packageInclusionPreviewLimit)
+                            .map((inclusion: any) => (
                             <p key={`${selectedPackage.id}-${inclusion.id || inclusion.sortOrder}`}>{inclusion.title}</p>
-                          ))}
-                          {selectedPackage.inclusions.length > 5 && (
-                            <p className="text-white/60">+{selectedPackage.inclusions.length - 5} more</p>
+                            ))}
+                          {selectedPackage.inclusions.length > packageInclusionPreviewLimit && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllSelectedPackageInclusions((prev) => !prev)}
+                              className="text-xs font-medium text-brand-primary"
+                            >
+                              {showAllSelectedPackageInclusions
+                                ? 'Show less'
+                                : `+${selectedPackage.inclusions.length - packageInclusionPreviewLimit} more`}
+                            </button>
                           )}
                         </div>
                       </div>
@@ -1420,11 +1436,21 @@ export const JobsPage = () => {
                         <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
                           <p className="text-xs text-white/60">Inclusions</p>
                           <div className="text-xs space-y-1">
-                            {selectedPackage.inclusions.slice(0, 5).map((inclusion: any) => (
+                            {selectedPackage.inclusions
+                              .slice(0, showAllSelectedPackageInclusions ? selectedPackage.inclusions.length : packageInclusionPreviewLimit)
+                              .map((inclusion: any) => (
                               <p key={`${selectedPackage.id}-${inclusion.id || inclusion.sortOrder}`}>{inclusion.title}</p>
-                            ))}
-                            {selectedPackage.inclusions.length > 5 && (
-                              <p className="text-white/60">+{selectedPackage.inclusions.length - 5} more</p>
+                              ))}
+                            {selectedPackage.inclusions.length > packageInclusionPreviewLimit && (
+                              <button
+                                type="button"
+                                onClick={() => setShowAllSelectedPackageInclusions((prev) => !prev)}
+                                className="text-xs font-medium text-brand-primary"
+                              >
+                                {showAllSelectedPackageInclusions
+                                  ? 'Show less'
+                                  : `+${selectedPackage.inclusions.length - packageInclusionPreviewLimit} more`}
+                              </button>
                             )}
                           </div>
                         </div>

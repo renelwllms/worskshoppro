@@ -203,6 +203,7 @@ export const PublicPWA = () => {
   const [form, setForm] = useState(initial);
   const [message, setMessage] = useState('');
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [showAllPackageInclusions, setShowAllPackageInclusions] = useState(false);
   const [bookingForm, setBookingForm] = useState(initialBooking);
   const [bookingSlots, setBookingSlots] = useState<{ startDateTime: string; endDateTime: string }[]>([]);
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -458,6 +459,10 @@ export const PublicPWA = () => {
     showInlineWizard,
     prefilledVehicle,
   ]);
+
+  useEffect(() => {
+    setShowAllPackageInclusions(false);
+  }, [form.selectedServicePackageId, isWizardOpen]);
 
   useEffect(() => {
     if (!prefillApplied || prefillServiceApplied || !isWofReminderIntent) {
@@ -747,7 +752,7 @@ export const PublicPWA = () => {
       <div className="space-y-3 pt-2">
         {recommendedUpsells.length > 0 && (
           <div className="space-y-2">
-            <p className="text-sm font-semibold">Recommended for you</p>
+            <p className="text-sm font-semibold">Recomended for your Car,based on Previous Repairs.</p>
             <div className="grid gap-2">
               {recommendedUpsells.map((upsell: any) => (
                 <label key={upsell.id} className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
@@ -833,6 +838,8 @@ export const PublicPWA = () => {
     : (wofBookingGateActive ? true : Boolean(form.selectedServiceId));
   const selectedServicePrice = formatPrice(selectedService?.basePrice, selectedService?.priceType);
   const selectedPackagePrice = formatPrice(selectedServicePackagePrice?.basePrice, selectedServicePackagePrice?.priceType);
+  const serviceStepInclusionLimit = 5;
+  const reviewStepInclusionLimit = 8;
   const complianceWarningMessage = `Last loaded WOF expiry (${formatDateLabel(lastLoadedCompliance?.wofExpiryDate)}) or Rego expiry (${formatDateLabel(lastLoadedCompliance?.regoExpiryDate)}) is expired. Update both current dates, or book for WOF.`;
 
   const selectWofService = () => {
@@ -1491,14 +1498,24 @@ export const PublicPWA = () => {
                           <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
                             <p className="text-xs text-white/60">Package inclusions</p>
                             <ul className="text-xs space-y-1">
-                              {selectedServicePackage.inclusions.slice(0, 5).map((inclusion: any) => (
+                              {selectedServicePackage.inclusions
+                                .slice(0, showAllPackageInclusions ? selectedServicePackage.inclusions.length : serviceStepInclusionLimit)
+                                .map((inclusion: any) => (
                                 <li key={`${selectedServicePackage.id}-${inclusion.id || inclusion.sortOrder}`}>
                                   {inclusion.title}
                                 </li>
-                              ))}
+                                ))}
                             </ul>
-                            {selectedServicePackage.inclusions.length > 5 && (
-                              <p className="text-xs text-white/60">+{selectedServicePackage.inclusions.length - 5} more</p>
+                            {selectedServicePackage.inclusions.length > serviceStepInclusionLimit && (
+                              <button
+                                type="button"
+                                onClick={() => setShowAllPackageInclusions((prev) => !prev)}
+                                className="text-xs font-medium text-brand-primary"
+                              >
+                                {showAllPackageInclusions
+                                  ? 'Show less'
+                                  : `+${selectedServicePackage.inclusions.length - serviceStepInclusionLimit} more`}
+                              </button>
                             )}
                           </div>
                         )}
@@ -1579,11 +1596,21 @@ export const PublicPWA = () => {
                       <div className="space-y-1">
                         <p className="text-white/60">Package inclusions</p>
                         <div className="space-y-1">
-                          {selectedServicePackage.inclusions.slice(0, 8).map((inclusion: any) => (
+                          {selectedServicePackage.inclusions
+                            .slice(0, showAllPackageInclusions ? selectedServicePackage.inclusions.length : reviewStepInclusionLimit)
+                            .map((inclusion: any) => (
                             <p key={`${selectedServicePackage.id}-${inclusion.id || inclusion.sortOrder}`}>{inclusion.title}</p>
-                          ))}
-                          {selectedServicePackage.inclusions.length > 8 && (
-                            <p className="text-white/70">+{selectedServicePackage.inclusions.length - 8} more</p>
+                            ))}
+                          {selectedServicePackage.inclusions.length > reviewStepInclusionLimit && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllPackageInclusions((prev) => !prev)}
+                              className="text-white/70 underline underline-offset-2"
+                            >
+                              {showAllPackageInclusions
+                                ? 'Show less'
+                                : `+${selectedServicePackage.inclusions.length - reviewStepInclusionLimit} more`}
+                            </button>
                           )}
                         </div>
                       </div>

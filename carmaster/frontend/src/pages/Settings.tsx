@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 import { PortalShell } from '../components/PortalShell';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 
 const VEHICLE_TYPES = ['JAPANESE', 'EUROPEAN'] as const;
 const PRICE_TYPES = ['FIXED', 'FROM', 'QUOTE_REQUIRED'] as const;
@@ -64,6 +65,7 @@ const formatLabel = (value: string) => {
 export const SettingsPage = () => {
   const qc = useQueryClient();
   const { showToast } = useToast();
+  const { user } = useAuth();
   const publicUrl = typeof window === 'undefined' ? '' : `${window.location.origin}/q`;
   const qrImageUrl = publicUrl
     ? `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(publicUrl)}`
@@ -114,7 +116,17 @@ export const SettingsPage = () => {
   const [deleteUpsellDialog, setDeleteUpsellDialog] = useState<string | null>(null);
   const [servicePackageForm, setServicePackageForm] = useState<any>(createDefaultPackageForm());
   const [editingServicePackage, setEditingServicePackage] = useState<any | null>(null);
+  const [expandedPackagePreviewIds, setExpandedPackagePreviewIds] = useState<Record<string, boolean>>({});
   const [deleteServicePackageDialog, setDeleteServicePackageDialog] = useState<string | null>(null);
+  const [office365Form, setOffice365Form] = useState({
+    azureClientId: '',
+    azureTenantId: '',
+    azureClientSecret: '',
+    azureRedirectUri: '',
+    bookingsEnabled: false,
+    bookingsPageUrl: '',
+    bookingsBusinessId: '',
+  });
   const [activityFilters, setActivityFilters] = useState({
     action: '',
     status: '',
@@ -145,6 +157,22 @@ export const SettingsPage = () => {
     const unique = new Set((activityLogs || []).map((log) => log.entity).filter(Boolean));
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
   }, [activityLogs]);
+
+  const packagePreviewLimit = 5;
+  const isAdmin = user?.role?.toLowerCase() === 'admin';
+
+  useEffect(() => {
+    if (!settings) return;
+    setOffice365Form({
+      azureClientId: settings.azureClientId ?? '',
+      azureTenantId: settings.azureTenantId ?? '',
+      azureClientSecret: '',
+      azureRedirectUri: settings.azureRedirectUri ?? '',
+      bookingsEnabled: Boolean(settings.bookingsEnabled),
+      bookingsPageUrl: settings.bookingsPageUrl ?? '',
+      bookingsBusinessId: settings.bookingsBusinessId ?? '',
+    });
+  }, [settings]);
 
   const saveSettings = useMutation({
     mutationFn: () => api.patch('/settings', form),
@@ -252,12 +280,15 @@ export const SettingsPage = () => {
   });
 
   const updateUpsell = useMutation({
-    mutationFn: ({ id, price, applicabilityRules, ...payload }: any) => {
+    mutationFn: ({ id, name, description, price, priceType, applicabilityRules, isActive }: any) => {
       const parsedRules = parseRules(applicabilityRules || '');
       return api.patch(`/settings/upsells/${id}`, {
-        ...payload,
+        name,
+        description,
         price: price !== '' ? Number(price) : 0,
+        priceType,
         applicabilityRules: parsedRules,
+        isActive,
       });
     },
     onSuccess: () => {
@@ -378,6 +409,32 @@ export const SettingsPage = () => {
     },
   });
 
+  const saveOffice365Settings = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = {
+        azureClientId: office365Form.azureClientId,
+        azureTenantId: office365Form.azureTenantId,
+        azureRedirectUri: office365Form.azureRedirectUri,
+        bookingsEnabled: office365Form.bookingsEnabled,
+        bookingsPageUrl: office365Form.bookingsPageUrl,
+        bookingsBusinessId: office365Form.bookingsBusinessId,
+      };
+      if (office365Form.azureClientSecret.trim()) {
+        payload.azureClientSecret = office365Form.azureClientSecret;
+      }
+      return api.patch('/settings/office365', payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['settings'] });
+      setOffice365Form((prev) => ({ ...prev, azureClientSecret: '' }));
+      showToast('Office 365 settings saved successfully');
+    },
+    onError: (error: any) => {
+      const message = error?.response?.data?.message || 'Failed to save Office 365 settings';
+      showToast(message, 'error');
+    },
+  });
+
   if (settingsLoading || servicesLoading || upsellsLoading || servicePackagesLoading) {
     return (
       <PortalShell>
@@ -475,6 +532,12 @@ export const SettingsPage = () => {
                   onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                 />
               ))}
+              <textarea
+                className="input sm:col-span-2 min-h-[110px]"
+                placeholder="Bank details for invoice payments"
+                defaultValue={settings?.bankDetails ?? ''}
+                onChange={(e) => setForm({ ...form, bankDetails: e.target.value })}
+              />
               <input
                 className="input"
                 type="number"
@@ -663,40 +726,55 @@ export const SettingsPage = () => {
         {activeTab === 'office365' && (
           <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
             <h2 className="font-semibold">Office 365 integration</h2>
+            {!isAdmin && (
+              <p className="text-xs text-amber-200">
+                Only admins can update Office 365 credentials and Bookings settings.
+              </p>
+            )}
             <div className="grid sm:grid-cols-2 gap-3">
               <input
                 className="input"
                 placeholder="Client ID"
-                defaultValue={settings?.azureClientId}
-                onChange={(e) => setForm({ ...form, azureClientId: e.target.value })}
+                value={office365Form.azureClientId}
+                onChange={(e) => setOffice365Form({ ...office365Form, azureClientId: e.target.value })}
+                disabled={!isAdmin}
               />
               <input
                 className="input"
                 placeholder="Tenant ID"
-                defaultValue={settings?.azureTenantId}
-                onChange={(e) => setForm({ ...form, azureTenantId: e.target.value })}
+                value={office365Form.azureTenantId}
+                onChange={(e) => setOffice365Form({ ...office365Form, azureTenantId: e.target.value })}
+                disabled={!isAdmin}
               />
               <input
                 className="input"
+                type="password"
                 placeholder="Client Secret"
-                defaultValue={settings?.azureClientSecret}
-                onChange={(e) => setForm({ ...form, azureClientSecret: e.target.value })}
+                value={office365Form.azureClientSecret}
+                onChange={(e) => setOffice365Form({ ...office365Form, azureClientSecret: e.target.value })}
+                disabled={!isAdmin}
               />
               <input
                 className="input"
                 placeholder="Redirect URI"
-                defaultValue={settings?.azureRedirectUri}
-                onChange={(e) => setForm({ ...form, azureRedirectUri: e.target.value })}
+                value={office365Form.azureRedirectUri}
+                onChange={(e) => setOffice365Form({ ...office365Form, azureRedirectUri: e.target.value })}
+                disabled={!isAdmin}
               />
             </div>
+            <p className="text-xs text-white/60">
+              The client secret is write-only. Leave it blank to keep the current stored secret.
+              {settings?.hasAzureClientSecret ? ' A secret is already configured.' : ' No secret is currently stored.'}
+            </p>
             <div className="border-t border-white/10 pt-4 space-y-3">
               <h3 className="font-semibold">Microsoft Bookings</h3>
               <label className="flex items-center gap-2 text-sm text-white/80">
                 <input
                   type="checkbox"
                   className="h-4 w-4"
-                  defaultChecked={settings?.bookingsEnabled}
-                  onChange={(e) => setForm({ ...form, bookingsEnabled: e.target.checked })}
+                  checked={office365Form.bookingsEnabled}
+                  onChange={(e) => setOffice365Form({ ...office365Form, bookingsEnabled: e.target.checked })}
+                  disabled={!isAdmin}
                 />
                 Enable Bookings on the public portal
               </label>
@@ -704,29 +782,32 @@ export const SettingsPage = () => {
                 <input
                   className="input"
                   placeholder="Bookings Page URL"
-                  defaultValue={settings?.bookingsPageUrl}
-                  onChange={(e) => setForm({ ...form, bookingsPageUrl: e.target.value })}
+                  value={office365Form.bookingsPageUrl}
+                  onChange={(e) => setOffice365Form({ ...office365Form, bookingsPageUrl: e.target.value })}
+                  disabled={!isAdmin}
                 />
                 <input
                   className="input"
                   placeholder="Bookings Business ID (optional)"
-                  defaultValue={settings?.bookingsBusinessId}
-                  onChange={(e) => setForm({ ...form, bookingsBusinessId: e.target.value })}
+                  value={office365Form.bookingsBusinessId}
+                  onChange={(e) => setOffice365Form({ ...office365Form, bookingsBusinessId: e.target.value })}
+                  disabled={!isAdmin}
                 />
               </div>
               <button
                 onClick={() => testBookings.mutate()}
-                disabled={testBookings.isPending}
+                disabled={testBookings.isPending || !isAdmin}
                 className="bg-white/10 border border-white/10 text-white font-semibold rounded-xl px-3 py-2 disabled:opacity-50"
               >
                 {testBookings.isPending ? 'Testing...' : 'Test connection'}
               </button>
             </div>
             <button
-              onClick={() => saveSettings.mutate()}
-              className="bg-brand-primary text-black font-semibold rounded-xl px-3 py-2 shadow-soft"
+              onClick={() => saveOffice365Settings.mutate()}
+              disabled={saveOffice365Settings.isPending || !isAdmin}
+              className="bg-brand-primary text-black font-semibold rounded-xl px-3 py-2 shadow-soft disabled:opacity-50"
             >
-              Save integration settings
+              {saveOffice365Settings.isPending ? 'Saving...' : 'Save integration settings'}
             </button>
           </div>
         )}
@@ -1255,6 +1336,7 @@ export const SettingsPage = () => {
               {servicePackages?.map((pkg: any) => {
                 const japanese = pkg.prices?.find((price: any) => price.vehicleType === 'JAPANESE');
                 const european = pkg.prices?.find((price: any) => price.vehicleType === 'EUROPEAN');
+                const showAllInclusions = Boolean(expandedPackagePreviewIds[pkg.id]);
                 return (
                   <div key={pkg.id} className="border border-white/10 rounded-xl p-3">
                     {editingServicePackage?.id === pkg.id ? (
@@ -1458,15 +1540,28 @@ export const SettingsPage = () => {
                           </p>
                           {pkg.inclusions?.length > 0 && (
                             <div className="flex gap-2 flex-wrap mt-2">
-                              {pkg.inclusions.slice(0, 5).map((inclusion: any) => (
+                              {pkg.inclusions
+                                .slice(0, showAllInclusions ? pkg.inclusions.length : packagePreviewLimit)
+                                .map((inclusion: any) => (
                                 <span key={`${pkg.id}-${inclusion.id}`} className="px-2 py-1 text-xs rounded-full bg-white/5 border border-white/10">
                                   {inclusion.title}
                                 </span>
-                              ))}
-                              {pkg.inclusions.length > 5 && (
-                                <span className="px-2 py-1 text-xs rounded-full bg-white/5 border border-white/10">
-                                  +{pkg.inclusions.length - 5} more
-                                </span>
+                                ))}
+                              {pkg.inclusions.length > packagePreviewLimit && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedPackagePreviewIds((prev) => ({
+                                      ...prev,
+                                      [pkg.id]: !prev[pkg.id],
+                                    }))
+                                  }
+                                  className="px-2 py-1 text-xs rounded-full bg-brand-primary/10 border border-brand-primary/30 text-brand-primary"
+                                >
+                                  {showAllInclusions
+                                    ? 'Show less'
+                                    : `+${pkg.inclusions.length - packagePreviewLimit} more`}
+                                </button>
                               )}
                             </div>
                           )}
@@ -1553,12 +1648,19 @@ export const SettingsPage = () => {
                 <option value="FROM">From</option>
                 <option value="QUOTE_REQUIRED">Quote required</option>
               </select>
-              <textarea
-                className="input sm:col-span-4"
-                placeholder='Rules JSON (e.g. {"minKm":60000,"seasons":["Winter"]})'
-                value={upsellForm.applicabilityRules}
-                onChange={(e) => setUpsellForm({ ...upsellForm, applicabilityRules: e.target.value })}
-              />
+              <div className="sm:col-span-4 space-y-1">
+                <label className="text-xs font-medium text-white/80">Applicability rules (optional JSON)</label>
+                <textarea
+                  className="input"
+                  placeholder='e.g. {"minKm":60000,"seasons":["Winter"]}'
+                  value={upsellForm.applicabilityRules}
+                  onChange={(e) => setUpsellForm({ ...upsellForm, applicabilityRules: e.target.value })}
+                />
+                <p className="text-[11px] text-white/60">
+                  Use JSON to control when this upsell is recommended. Supported keys include `minKm`, `maxKm`,
+                  `seasons`, and `serviceNameContains`.
+                </p>
+              </div>
               <label className="flex items-center gap-2 text-xs text-white/80">
                 <input
                   type="checkbox"
@@ -1620,12 +1722,19 @@ export const SettingsPage = () => {
                           Active
                         </label>
                       </div>
-                      <textarea
-                        className="input text-sm"
-                        value={editingUpsell.applicabilityRules ?? ''}
-                        onChange={(e) => setEditingUpsell({ ...editingUpsell, applicabilityRules: e.target.value })}
-                        placeholder='Rules JSON'
-                      />
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-white/80">Applicability rules (optional JSON)</label>
+                        <textarea
+                          className="input text-sm"
+                          value={editingUpsell.applicabilityRules ?? ''}
+                          onChange={(e) => setEditingUpsell({ ...editingUpsell, applicabilityRules: e.target.value })}
+                          placeholder='e.g. {"minKm":60000,"seasons":["Winter"]}'
+                        />
+                        <p className="text-[11px] text-white/60">
+                          Use JSON to control when this upsell is recommended. Supported keys include `minKm`, `maxKm`,
+                          `seasons`, and `serviceNameContains`.
+                        </p>
+                      </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => updateUpsell.mutate(editingUpsell)}
@@ -1663,7 +1772,12 @@ export const SettingsPage = () => {
                       <div className="flex gap-1">
                         <button
                           onClick={() => setEditingUpsell({
-                            ...upsell,
+                            id: upsell.id,
+                            name: upsell.name,
+                            description: upsell.description ?? '',
+                            price: upsell.price ?? '',
+                            priceType: upsell.priceType,
+                            isActive: upsell.isActive,
                             applicabilityRules: upsell.applicabilityRules ? JSON.stringify(upsell.applicabilityRules) : '',
                           })}
                           className="px-2 py-1 text-xs rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white transition"
