@@ -17,6 +17,7 @@ type ScheduleView = 'all' | 'overdue' | 'upcoming';
 type SourceJob = {
   id: string;
   customerId: string;
+  vehicleId: string | null;
   jobType: JobType | null;
   title: string;
   serviceType: string | null;
@@ -35,6 +36,14 @@ type ScheduleWithRelations = Prisma.ServiceScheduleGetPayload<{
         lastName: true;
         email: true;
         phone: true;
+        rego: true;
+        vehicleBrand: true;
+        vehicleModel: true;
+      };
+    };
+    vehicle: {
+      select: {
+        id: true;
         rego: true;
         vehicleBrand: true;
         vehicleModel: true;
@@ -141,13 +150,13 @@ export class ServiceSchedulesService {
     searchParams.set('intent', 'wof-renewal');
     searchParams.set('service', 'wof');
     searchParams.set('source', 'email-reminder');
-    this.setQueryParam(searchParams, 'rego', schedule.customer.rego);
+    this.setQueryParam(searchParams, 'rego', schedule.vehicle.rego);
     this.setQueryParam(searchParams, 'firstName', schedule.customer.firstName);
     this.setQueryParam(searchParams, 'lastName', schedule.customer.lastName);
     this.setQueryParam(searchParams, 'phone', schedule.customer.phone);
     this.setQueryParam(searchParams, 'email', schedule.customer.email);
-    this.setQueryParam(searchParams, 'vehicleBrand', schedule.customer.vehicleBrand);
-    this.setQueryParam(searchParams, 'vehicleModel', schedule.customer.vehicleModel);
+    this.setQueryParam(searchParams, 'vehicleBrand', schedule.vehicle.vehicleBrand || schedule.customer.vehicleBrand);
+    this.setQueryParam(searchParams, 'vehicleModel', schedule.vehicle.vehicleModel || schedule.customer.vehicleModel);
     searchParams.set('wofExpiryDate', schedule.dueDate.toISOString().slice(0, 10));
 
     if (!publicPortalUrl) {
@@ -197,6 +206,7 @@ export class ServiceSchedulesService {
       select: {
         id: true,
         customerId: true,
+        vehicleId: true,
         jobType: true,
         title: true,
         serviceType: true,
@@ -213,38 +223,43 @@ export class ServiceSchedulesService {
     const latestRego = new Map<string, SourceJob>();
 
     for (const job of jobs) {
-      if (job.jobType === JobType.MAINTENANCE && !latestMaintenance.has(job.customerId)) {
-        latestMaintenance.set(job.customerId, job);
+      if (!job.vehicleId) {
+        continue;
       }
-      if (job.wofExpiryDate && !latestWof.has(job.customerId)) {
-        latestWof.set(job.customerId, job);
+      if (job.jobType === JobType.MAINTENANCE && !latestMaintenance.has(job.vehicleId)) {
+        latestMaintenance.set(job.vehicleId, job);
       }
-      if (job.regoExpiryDate && !latestRego.has(job.customerId)) {
-        latestRego.set(job.customerId, job);
+      if (job.wofExpiryDate && !latestWof.has(job.vehicleId)) {
+        latestWof.set(job.vehicleId, job);
+      }
+      if (job.regoExpiryDate && !latestRego.has(job.vehicleId)) {
+        latestRego.set(job.vehicleId, job);
       }
     }
 
     const upserts: Prisma.PrismaPromise<unknown>[] = [];
 
-    for (const [customerId, job] of latestMaintenance.entries()) {
+    for (const [vehicleId, job] of latestMaintenance.entries()) {
       const dueDate = this.buildServiceDueDate(job);
       const baseTitle = job.serviceType?.trim() || job.title.trim() || 'Service';
       upserts.push(
         this.prisma.serviceSchedule.upsert({
           where: {
-            customerId_type: {
-              customerId,
+            vehicleId_type: {
+              vehicleId,
               type: ScheduleType.SERVICE,
             },
           },
           create: {
-            customerId,
+            customerId: job.customerId,
+            vehicleId,
             type: ScheduleType.SERVICE,
             title: `${baseTitle} due`,
             dueDate,
             sourceJobId: job.id,
           },
           update: {
+            customerId: job.customerId,
             title: `${baseTitle} due`,
             dueDate,
             sourceJobId: job.id,
@@ -253,24 +268,26 @@ export class ServiceSchedulesService {
       );
     }
 
-    for (const [customerId, job] of latestWof.entries()) {
+    for (const [vehicleId, job] of latestWof.entries()) {
       if (!job.wofExpiryDate) continue;
       upserts.push(
         this.prisma.serviceSchedule.upsert({
           where: {
-            customerId_type: {
-              customerId,
+            vehicleId_type: {
+              vehicleId,
               type: ScheduleType.WOF,
             },
           },
           create: {
-            customerId,
+            customerId: job.customerId,
+            vehicleId,
             type: ScheduleType.WOF,
             title: 'WOF due',
             dueDate: job.wofExpiryDate,
             sourceJobId: job.id,
           },
           update: {
+            customerId: job.customerId,
             title: 'WOF due',
             dueDate: job.wofExpiryDate,
             sourceJobId: job.id,
@@ -279,24 +296,26 @@ export class ServiceSchedulesService {
       );
     }
 
-    for (const [customerId, job] of latestRego.entries()) {
+    for (const [vehicleId, job] of latestRego.entries()) {
       if (!job.regoExpiryDate) continue;
       upserts.push(
         this.prisma.serviceSchedule.upsert({
           where: {
-            customerId_type: {
-              customerId,
+            vehicleId_type: {
+              vehicleId,
               type: ScheduleType.REGO,
             },
           },
           create: {
-            customerId,
+            customerId: job.customerId,
+            vehicleId,
             type: ScheduleType.REGO,
             title: 'Rego due',
             dueDate: job.regoExpiryDate,
             sourceJobId: job.id,
           },
           update: {
+            customerId: job.customerId,
             title: 'Rego due',
             dueDate: job.regoExpiryDate,
             sourceJobId: job.id,
@@ -326,6 +345,14 @@ export class ServiceSchedulesService {
             email: true,
             phone: true,
             rego: true,
+          },
+        },
+        vehicle: {
+          select: {
+            id: true,
+            rego: true,
+            vehicleBrand: true,
+            vehicleModel: true,
           },
         },
         sourceJob: {
@@ -361,6 +388,7 @@ export class ServiceSchedulesService {
           lastReminderAt: schedule.lastReminderAt,
           reminderCount: schedule.reminderCount,
           customer: schedule.customer,
+          vehicle: schedule.vehicle,
           sourceJob: schedule.sourceJob,
         };
       })
@@ -452,7 +480,7 @@ export class ServiceSchedulesService {
       year: 'numeric',
     });
     const customerName = `${schedule.customer.firstName} ${schedule.customer.lastName}`.trim() || 'Customer';
-    const rego = schedule.customer.rego;
+    const rego = schedule.vehicle.rego || schedule.customer.rego || 'vehicle';
     const businessName = settings.businessName?.trim() || 'Carmaster';
     const typeLabel = this.mapTypeLabel(schedule.type);
     const wofBookingUrl = this.buildWofBookingUrl(schedule, settings);
@@ -541,6 +569,14 @@ export class ServiceSchedulesService {
             lastName: true,
             email: true,
             phone: true,
+            rego: true,
+            vehicleBrand: true,
+            vehicleModel: true,
+          },
+        },
+        vehicle: {
+          select: {
+            id: true,
             rego: true,
             vehicleBrand: true,
             vehicleModel: true,
@@ -705,6 +741,14 @@ export class ServiceSchedulesService {
             vehicleModel: true,
           },
         },
+        vehicle: {
+          select: {
+            id: true,
+            rego: true,
+            vehicleBrand: true,
+            vehicleModel: true,
+          },
+        },
         sourceJob: {
           select: {
             id: true,
@@ -795,7 +839,7 @@ export class ServiceSchedulesService {
               scheduleId: schedule.id,
               channel,
               customerName,
-              rego: schedule.customer.rego,
+              rego: schedule.vehicle.rego || schedule.customer.rego || 'vehicle',
               reason,
             });
           }

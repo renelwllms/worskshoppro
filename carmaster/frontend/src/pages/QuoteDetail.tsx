@@ -16,6 +16,8 @@ const formatMoney = (value: any) => {
   return Number.isFinite(num) ? num.toFixed(2) : '0.00';
 };
 
+const getJobRego = (job: any) => job?.vehicle?.rego || job?.customer?.rego || '-';
+
 export const QuoteDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -325,7 +327,7 @@ export const QuoteDetailPage = () => {
                   <option value="">Select job</option>
                   {jobs?.map((job: any) => (
                     <option key={job.id} value={job.id}>
-                      {job.title} - {job.customer?.rego}
+                      {job.title} - {getJobRego(job)}
                     </option>
                   ))}
                 </select>

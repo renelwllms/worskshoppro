@@ -1,14 +1,17 @@
 import { IsEmail, IsOptional, IsString } from 'class-validator';
 
 export class CreateCustomerDto {
+  @IsOptional()
   @IsString()
-  rego: string;
+  rego?: string;
 
+  @IsOptional()
   @IsString()
-  vehicleBrand: string;
+  vehicleBrand?: string;
 
+  @IsOptional()
   @IsString()
-  vehicleModel: string;
+  vehicleModel?: string;
 
   @IsString()
   firstName: string;

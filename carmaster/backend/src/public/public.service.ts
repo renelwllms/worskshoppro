@@ -34,32 +34,88 @@ export class PublicService {
     private readonly bookings: BookingsService,
   ) {}
 
-  async createOrUpdateCustomer(dto: Pick<PublicJobDto, 'rego' | 'firstName' | 'lastName' | 'phone' | 'email' | 'vehicleBrand' | 'vehicleModel'>) {
-    const existing = await this.prisma.customer.findUnique({ where: { rego: dto.rego } });
+  private normalizeRego(rego?: string | null) {
+    return String(rego || '').trim().toUpperCase();
+  }
+
+  private async upsertVehicle(customerId: string, dto: Pick<PublicJobDto, 'rego' | 'vehicleBrand' | 'vehicleModel'>) {
+    const rego = this.normalizeRego(dto.rego);
+    if (!rego) {
+      return null;
+    }
+
+    const existing = await this.prisma.vehicle.findFirst({
+      where: { rego: { equals: rego, mode: 'insensitive' } },
+    });
+
     if (existing) {
-      return this.prisma.customer.update({
+      return this.prisma.vehicle.update({
         where: { id: existing.id },
         data: {
-          firstName: dto.firstName,
-          lastName: dto.lastName,
-          phone: dto.phone,
-          email: dto.email,
-          vehicleBrand: dto.vehicleBrand,
-          vehicleModel: dto.vehicleModel,
+          customerId,
+          rego,
+          vehicleBrand: dto.vehicleBrand || null,
+          vehicleModel: dto.vehicleModel || null,
         },
       });
     }
-    return this.prisma.customer.create({
+
+    return this.prisma.vehicle.create({
       data: {
-        rego: dto.rego,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        phone: dto.phone,
-        email: dto.email,
-        vehicleBrand: dto.vehicleBrand,
-        vehicleModel: dto.vehicleModel,
+        customerId,
+        rego,
+        vehicleBrand: dto.vehicleBrand || null,
+        vehicleModel: dto.vehicleModel || null,
       },
     });
+  }
+
+  async createOrUpdateCustomer(dto: Pick<PublicJobDto, 'rego' | 'firstName' | 'lastName' | 'phone' | 'email' | 'vehicleBrand' | 'vehicleModel'>) {
+    const normalizedRego = this.normalizeRego(dto.rego);
+    const existingVehicle = normalizedRego
+      ? await this.prisma.vehicle.findFirst({
+          where: { rego: { equals: normalizedRego, mode: 'insensitive' } },
+          include: { customer: true },
+        })
+      : null;
+
+    const existingCustomer = existingVehicle?.customer
+      ?? await this.prisma.customer.findFirst({
+        where: {
+          OR: [
+            dto.email ? { email: { equals: dto.email, mode: 'insensitive' } } : undefined,
+            dto.phone ? { phone: dto.phone } : undefined,
+          ].filter(Boolean) as Prisma.CustomerWhereInput[],
+        },
+      });
+
+    const customer = existingCustomer
+      ? await this.prisma.customer.update({
+          where: { id: existingCustomer.id },
+          data: {
+            rego: normalizedRego || existingCustomer.rego,
+            vehicleBrand: dto.vehicleBrand || existingCustomer.vehicleBrand,
+            vehicleModel: dto.vehicleModel || existingCustomer.vehicleModel,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            phone: dto.phone,
+            email: dto.email,
+          },
+        })
+      : await this.prisma.customer.create({
+          data: {
+            rego: normalizedRego || null,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            phone: dto.phone,
+            email: dto.email,
+            vehicleBrand: dto.vehicleBrand || null,
+            vehicleModel: dto.vehicleModel || null,
+          },
+        });
+
+    const vehicle = await this.upsertVehicle(customer.id, dto);
+    return { customer, vehicle };
   }
 
   private async ensureWofService() {
@@ -394,7 +450,7 @@ export class PublicService {
   }
 
   private async createPublicJob(dto: PublicJobDto, fallbackJobType: JobType) {
-    const customer = await this.createOrUpdateCustomer(dto);
+    const { customer, vehicle } = await this.createOrUpdateCustomer(dto);
     const jobType = dto.jobType ?? fallbackJobType;
     const hasSelectedService = Boolean(dto.selectedServiceId);
     const hasSelectedPackage = Boolean(dto.selectedServicePackageId);
@@ -471,6 +527,7 @@ export class PublicService {
         job = await this.prisma.job.create({
           data: {
             customerId: customer.id,
+            vehicleId: vehicle?.id ?? null,
             title: jobType === JobType.MAINTENANCE ? 'Regular Maintenance' : 'Repair Job',
             description: detailsParts.join('\n'),
             serviceType,
@@ -524,29 +581,29 @@ export class PublicService {
 
   async findCustomerByRego(rego?: string) {
     if (!rego) return null;
-    const customers = await this.prisma.customer.findMany({
+    const vehicle = await this.prisma.vehicle.findFirst({
       where: { rego: { equals: rego, mode: 'insensitive' } },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        rego: true,
-        vehicleBrand: true,
-        vehicleModel: true,
-        firstName: true,
-        lastName: true,
-        phone: true,
-        email: true,
+      include: {
+        customer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
+          },
+        },
       },
+      orderBy: { createdAt: 'desc' },
     });
-    if (!customers.length) {
+    if (!vehicle) {
       return null;
     }
-    const customer = customers[0];
-    const customerIds = customers.map((entry) => entry.id);
+
     const [latestWofRecord, latestRegoRecord] = await Promise.all([
       this.prisma.job.findFirst({
         where: {
-          customerId: { in: customerIds },
+          vehicleId: vehicle.id,
           wofExpiryDate: { not: null },
         },
         orderBy: [{ wofExpiryDate: 'desc' }, { createdAt: 'desc' }],
@@ -554,7 +611,7 @@ export class PublicService {
       }),
       this.prisma.job.findFirst({
         where: {
-          customerId: { in: customerIds },
+          vehicleId: vehicle.id,
           regoExpiryDate: { not: null },
         },
         orderBy: [{ regoExpiryDate: 'desc' }, { createdAt: 'desc' }],
@@ -563,13 +620,13 @@ export class PublicService {
     ]);
 
     return {
-      rego: customer.rego,
-      vehicleBrand: customer.vehicleBrand,
-      vehicleModel: customer.vehicleModel,
-      firstName: customer.firstName,
-      lastName: customer.lastName,
-      phone: customer.phone,
-      email: customer.email,
+      rego: vehicle.rego,
+      vehicleBrand: vehicle.vehicleBrand,
+      vehicleModel: vehicle.vehicleModel,
+      firstName: vehicle.customer.firstName,
+      lastName: vehicle.customer.lastName,
+      phone: vehicle.customer.phone,
+      email: vehicle.customer.email,
       wofExpiryDate: latestWofRecord?.wofExpiryDate ?? null,
       regoExpiryDate: latestRegoRecord?.regoExpiryDate ?? null,
     };
@@ -627,7 +684,7 @@ export class PublicService {
       throw new BadRequestException('WOF and Rego expiry dates are required for compliance-only updates');
     }
 
-    const customer = await this.createOrUpdateCustomer(dto);
+    const { customer, vehicle } = await this.createOrUpdateCustomer(dto);
     const detailsParts = [
       'Compliance update only (no WOF booking selected).',
       dto.notes?.trim() ? `Notes: ${dto.notes.trim()}` : '',
@@ -639,6 +696,7 @@ export class PublicService {
     const job = await this.prisma.job.create({
       data: {
         customerId: customer.id,
+        vehicleId: vehicle?.id ?? null,
         title: 'Compliance date update',
         description: detailsParts.join('\n'),
         status: 'COMPLETED',
@@ -823,7 +881,15 @@ export class PublicService {
       timeZone,
     });
 
-    const customer = await this.createOrUpdateCustomer(dto);
+    const { customer, vehicle } = await this.createOrUpdateCustomer({
+      rego: dto.rego,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      phone: dto.phone,
+      email: dto.email,
+      vehicleBrand: dto.vehicleBrand,
+      vehicleModel: dto.vehicleModel,
+    });
     const serviceName = service?.displayName || service?.name || 'Booking';
     const details = [
       `Bookings ID: ${appointment?.id || 'n/a'}`,
@@ -837,6 +903,7 @@ export class PublicService {
     const job = await this.prisma.job.create({
       data: {
         customerId: customer.id,
+        vehicleId: vehicle?.id ?? null,
         title: 'Bookings Appointment',
         description: details,
         serviceType: serviceName,

@@ -35,7 +35,7 @@ export const DashboardPage = () => {
     const brandCount: Record<string, { brand: string; count: number; customer: string }> = {};
 
     allJobs.forEach((job: any) => {
-      const brand = job.customer?.vehicleBrand?.trim();
+      const brand = (job.vehicle?.vehicleBrand || job.customer?.vehicleBrand || '').trim();
       if (!brand) return;
       if (!brandCount[brand]) {
         brandCount[brand] = {
@@ -197,7 +197,7 @@ export const DashboardPage = () => {
                   <div>
                     <p className="font-semibold">{job.title}</p>
                     <p className="text-white/60">
-                      {job.customer.firstName} {job.customer.lastName} • {job.customer.rego}
+                      {job.customer.firstName} {job.customer.lastName} • {job.vehicle?.rego || job.customer.rego}
                     </p>
                   </div>
                   <span className="text-xs text-red-200">

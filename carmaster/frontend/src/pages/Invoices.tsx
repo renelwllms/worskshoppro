@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { PortalShell } from '../components/PortalShell';
@@ -52,6 +52,8 @@ const buildJobHeading = (job: any) => {
   const title = job?.title || job?.selectedService?.name || job?.selectedServicePackage?.name || 'Booked job';
   return job?.jobNumber ? `${title} (#${job.jobNumber})` : title;
 };
+
+const getJobVehicleRego = (job: any) => job?.vehicle?.rego || job?.customer?.rego || '-';
 
 const buildInvoiceItemsFromJob = (job: any): Item[] => {
   const pricingItems = Array.isArray(job?.pricingSnapshot?.items) ? job.pricingSnapshot.items : [];
@@ -146,6 +148,10 @@ const getInvoiceJobSummary = (invoice: any) => {
   return `${firstLabel} + ${linkedJobs.length - 1} more`;
 };
 
+const canEmailInvoice = (invoice: any) => invoice?.status !== 'CANCELLED';
+
+const getInvoiceEmailActionLabel = (invoice: any) => (invoice?.status === 'DRAFT' ? 'Send' : 'Resend');
+
 export const InvoicesPage = () => {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -179,13 +185,42 @@ export const InvoicesPage = () => {
   const [showJobModal, setShowJobModal] = useState(false);
   const [query, setQuery] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
+  const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
   const [sendDialog, setSendDialog] = useState<string | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
   const total = useMemo(
     () => items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0),
     [items]
   );
+
+  useEffect(() => {
+    if (!openActionMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
+        setOpenActionMenu(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenActionMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [openActionMenu]);
+
   const resetCreateForm = () => {
     setItems([EMPTY_ITEM]);
     setForm({ customerId: '', dueDate: getTodayDateInputValue(), quoteId: '' });
@@ -238,6 +273,7 @@ export const InvoicesPage = () => {
     mutationFn: async (id: string) => api.post(`/invoices/${id}/send`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['invoices'] });
+      setOpenActionMenu(null);
       setSendDialog(null);
       showToast('Invoice sent successfully');
     },
@@ -252,6 +288,7 @@ export const InvoicesPage = () => {
       (await api.post(`/invoices/${id}/pdf`, {}, { responseType: 'blob' })).data,
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['invoices'] });
+      setOpenActionMenu(null);
       const opened = openPdfBlob(data);
       if (!opened) {
         showToast('Invoice PDF not available', 'error');
@@ -268,6 +305,7 @@ export const InvoicesPage = () => {
       (await api.post(`/invoices/${invoice.id}/pdf`, {}, { responseType: 'blob' })).data,
     onSuccess: (data: any, invoice) => {
       qc.invalidateQueries({ queryKey: ['invoices'] });
+      setOpenActionMenu(null);
       const suffix = invoice?.invoiceNumber ? String(invoice.invoiceNumber) : invoice?.id?.slice(0, 6)?.toUpperCase() ?? 'draft';
       const fileName = `invoice-${suffix}.pdf`;
       const downloaded = downloadPdfBlob(data, fileName);
@@ -285,6 +323,7 @@ export const InvoicesPage = () => {
     mutationFn: async (id: string) => api.delete(`/invoices/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['invoices'] });
+      setOpenActionMenu(null);
       setDeleteDialog(null);
       showToast('Invoice deleted successfully');
     },
@@ -367,20 +406,14 @@ export const InvoicesPage = () => {
       const today = new Date();
       const diffDays = Math.ceil((due.getTime() - today.setHours(0, 0, 0, 0)) / 86400000);
       if (diffDays < 0) {
-        const overdueDays = Math.abs(diffDays);
         return {
-          text: `OVERDUE BY ${overdueDays} DAY${overdueDays === 1 ? '' : 'S'}`,
+          text: 'OVERDUE',
           tone: 'bg-red-500/10 text-red-200 border-red-500/30',
         };
       }
-      if (diffDays === 0) {
-        return { text: 'DUE TODAY', tone: 'bg-blue-500/10 text-blue-200 border-blue-500/30' };
-      }
-      if (diffDays <= 7) {
-        return { text: `DUE IN ${diffDays} DAY${diffDays === 1 ? '' : 'S'}`, tone: 'bg-blue-500/10 text-blue-200 border-blue-500/30' };
-      }
+      return { text: 'DUE', tone: 'bg-blue-500/10 text-blue-200 border-blue-500/30' };
     }
-    return { text: invoice.status || 'DRAFT', tone: 'bg-white/5 text-white border-white/10' };
+    return { text: 'DUE', tone: 'bg-blue-500/10 text-blue-200 border-blue-500/30' };
   };
 
   const filteredInvoices = useMemo(() => {
@@ -415,6 +448,60 @@ export const InvoicesPage = () => {
     return { overdueTotal, overdueCount, unpaidTotal };
   }, [invoices]);
 
+  const insightDetails = useMemo(() => {
+    const data = invoices || [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const statusCounts = {
+      draft: 0,
+      sent: 0,
+      paid: 0,
+      cancelled: 0,
+      dueSoon: 0,
+    };
+
+    const outstandingInvoices = data
+      .filter((invoice: any) => invoice.status !== 'PAID' && invoice.status !== 'CANCELLED')
+      .map((invoice: any) => {
+        const totalValue = Number(invoice.total) || 0;
+        const due = invoice.dueDate ? new Date(invoice.dueDate) : null;
+        let daysUntilDue: number | null = null;
+        if (due && !Number.isNaN(due.getTime())) {
+          due.setHours(0, 0, 0, 0);
+          daysUntilDue = Math.ceil((due.getTime() - today.getTime()) / 86400000);
+          if (daysUntilDue >= 0 && daysUntilDue <= 7) {
+            statusCounts.dueSoon += 1;
+          }
+        }
+        return {
+          ...invoice,
+          totalValue,
+          daysUntilDue,
+        };
+      })
+      .sort((a: any, b: any) => b.totalValue - a.totalValue);
+
+    data.forEach((invoice: any) => {
+      if (invoice.status === 'PAID') {
+        statusCounts.paid += 1;
+      } else if (invoice.status === 'CANCELLED') {
+        statusCounts.cancelled += 1;
+      } else if (invoice.status === 'SENT') {
+        statusCounts.sent += 1;
+      } else {
+        statusCounts.draft += 1;
+      }
+    });
+
+    return {
+      statusCounts,
+      outstandingInvoices: outstandingInvoices.slice(0, 5),
+      averageOutstanding: outstandingInvoices.length
+        ? outstandingInvoices.reduce((sum: number, invoice: any) => sum + invoice.totalValue, 0) / outstandingInvoices.length
+        : 0,
+    };
+  }, [invoices]);
+
   if (isLoading) {
     return (
       <PortalShell>
@@ -447,12 +534,133 @@ export const InvoicesPage = () => {
       />
       <ConfirmDialog
         isOpen={!!sendDialog}
-        title="Send Invoice via Email"
+        title={(() => {
+          const invoice = (invoices || []).find((entry: any) => entry.id === sendDialog);
+          return invoice?.status === 'DRAFT' ? 'Send Invoice via Email' : 'Resend Invoice via Email';
+        })()}
         message="This will send the invoice PDF to the customer's email address. Continue?"
-        confirmLabel="Send Email"
+        confirmLabel={(() => {
+          const invoice = (invoices || []).find((entry: any) => entry.id === sendDialog);
+          return invoice?.status === 'DRAFT' ? 'Send Email' : 'Resend Email';
+        })()}
         onConfirm={() => sendInvoice.mutate(sendDialog!)}
         onCancel={() => setSendDialog(null)}
       />
+      {showInsights && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0b0b0b] shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Invoice insights</h3>
+                <p className="text-xs text-white/55">
+                  Snapshot of unpaid exposure, invoice status, and the largest open balances.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInsights(false)}
+                className="rounded-full border border-brand-primary/40 bg-brand-primary px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-brand-accent"
+              >
+                Close
+              </button>
+            </div>
+            <div className="max-h-[75vh] overflow-auto p-5 space-y-5">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-red-200/80">Overdue total</p>
+                  <p className="mt-2 text-2xl font-semibold text-white">NZD{formatMoney(insights.overdueTotal)}</p>
+                  <p className="mt-1 text-xs text-red-100/70">{insights.overdueCount} overdue invoices</p>
+                </div>
+                <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-blue-200/80">Unpaid total</p>
+                  <p className="mt-2 text-2xl font-semibold text-white">NZD{formatMoney(insights.unpaidTotal)}</p>
+                  <p className="mt-1 text-xs text-blue-100/70">{insightDetails.statusCounts.dueSoon} due within 7 days</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-white/50">Avg open invoice</p>
+                  <p className="mt-2 text-2xl font-semibold text-white">NZD{formatMoney(insightDetails.averageOutstanding)}</p>
+                  <p className="mt-1 text-xs text-white/55">
+                    Based on {insightDetails.outstandingInvoices.length > 0 ? 'active unpaid' : 'no unpaid'} invoices
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-white/50">Total invoices</p>
+                  <p className="mt-2 text-2xl font-semibold text-white">{(invoices || []).length}</p>
+                  <p className="mt-1 text-xs text-white/55">Filtered list below stays unchanged</p>
+                </div>
+              </div>
+
+              <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-sm font-semibold text-white">Status breakdown</p>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between text-white/80">
+                      <span>Draft</span>
+                      <span className="font-semibold text-white">{insightDetails.statusCounts.draft}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-white/80">
+                      <span>Sent</span>
+                      <span className="font-semibold text-white">{insightDetails.statusCounts.sent}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-white/80">
+                      <span>Paid</span>
+                      <span className="font-semibold text-white">{insightDetails.statusCounts.paid}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-white/80">
+                      <span>Cancelled</span>
+                      <span className="font-semibold text-white">{insightDetails.statusCounts.cancelled}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-white">Largest unpaid invoices</p>
+                    <p className="text-xs text-white/50">Top 5 by balance</p>
+                  </div>
+                  {insightDetails.outstandingInvoices.length === 0 ? (
+                    <p className="mt-4 text-sm text-white/60">No unpaid invoices right now.</p>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      {insightDetails.outstandingInvoices.map((invoice: any) => (
+                        <button
+                          key={invoice.id}
+                          type="button"
+                          onClick={() => navigate(`/invoices/${invoice.id}`)}
+                          className="w-full rounded-2xl border border-white/10 bg-black/10 p-4 text-left transition hover:bg-white/5"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-white">{getInvoiceNumberLabel(invoice)}</p>
+                              <p className="mt-1 text-xs text-white/55">
+                                {invoice.customer?.firstName} {invoice.customer?.lastName} · {getInvoiceJobSummary(invoice)}
+                              </p>
+                            </div>
+                            <p className="text-sm font-semibold text-white">NZD{formatMoney(invoice.totalValue)}</p>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-3 text-xs text-white/60">
+                            <span>Status: {String(invoice.status || 'DRAFT').replace(/_/g, ' ')}</span>
+                            <span>Due: {formatDate(invoice.dueDate)}</span>
+                            <span>
+                              {invoice.daysUntilDue == null
+                                ? 'No due date'
+                                : invoice.daysUntilDue < 0
+                                  ? `${Math.abs(invoice.daysUntilDue)} day${Math.abs(invoice.daysUntilDue) === 1 ? '' : 's'} overdue`
+                                  : invoice.daysUntilDue === 0
+                                    ? 'Due today'
+                                    : `Due in ${invoice.daysUntilDue} day${invoice.daysUntilDue === 1 ? '' : 's'}`}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showJobModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0b0b0b] shadow-2xl">
@@ -484,7 +692,7 @@ export const InvoicesPage = () => {
                           <div>
                             <p className="text-sm font-semibold text-white">{job.title}</p>
                             <p className="text-xs text-white/50">
-                              {job.customer?.rego || '-'} · {getJobInvoiceStatusLabel(job)}
+                              {getJobVehicleRego(job)} · {getJobInvoiceStatusLabel(job)}
                             </p>
                           </div>
                           <button
@@ -551,6 +759,7 @@ export const InvoicesPage = () => {
               </div>
               <button
                 type="button"
+                onClick={() => setShowInsights(true)}
                 className="text-xs px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white transition"
               >
                 View insights
@@ -782,44 +991,73 @@ export const InvoicesPage = () => {
                         <td className="px-4 py-3 text-white/80">{formatDate(invoice.dueDate)}</td>
                         <td className="px-4 py-3 text-right font-semibold">NZD{formatMoney(invoice.total)}</td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="relative inline-flex justify-end" ref={openActionMenu === invoice.id ? actionMenuRef : null}>
                             <button
                               type="button"
-                              onClick={() => navigate(`/invoices/${invoice.id}`)}
-                              className="text-xs px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white transition"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setOpenActionMenu((current) => (current === invoice.id ? null : invoice.id));
+                              }}
+                              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
                             >
-                              Open
+                              <span>Actions</span>
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-brand-primary/50 text-[10px] text-brand-primary">
+                                v
+                              </span>
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => printInvoice.mutate(invoice.id)}
-                              className="text-xs px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white transition"
-                            >
-                              Print
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => downloadInvoice.mutate(invoice)}
-                              className="text-xs px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white transition"
-                            >
-                              Download
-                            </button>
-                            {invoice.status === 'DRAFT' && (
-                              <button
-                                type="button"
-                                onClick={() => setSendDialog(invoice.id)}
-                                className="text-xs px-3 py-1.5 rounded-full bg-brand-primary hover:bg-brand-accent text-black transition"
+                            {openActionMenu === invoice.id && (
+                              <div
+                                className="absolute right-0 top-full z-20 mt-2 min-w-[180px] rounded-2xl border border-white/10 bg-[#111111] p-2 shadow-2xl"
+                                onClick={(event) => event.stopPropagation()}
                               >
-                                Send
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenActionMenu(null);
+                                    navigate(`/invoices/${invoice.id}`);
+                                  }}
+                                  className="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs text-white/80 transition hover:bg-white/5 hover:text-white"
+                                >
+                                  Open
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => printInvoice.mutate(invoice.id)}
+                                  className="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs text-white/80 transition hover:bg-white/5 hover:text-white"
+                                >
+                                  Print
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadInvoice.mutate(invoice)}
+                                  className="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs text-white/80 transition hover:bg-white/5 hover:text-white"
+                                >
+                                  Download
+                                </button>
+                                {canEmailInvoice(invoice) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenActionMenu(null);
+                                      setSendDialog(invoice.id);
+                                    }}
+                                    className="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs text-white/80 transition hover:bg-white/5 hover:text-white"
+                                  >
+                                    {getInvoiceEmailActionLabel(invoice)}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenActionMenu(null);
+                                    setDeleteDialog(invoice.id);
+                                  }}
+                                  className="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs text-red-200 transition hover:bg-red-500/10"
+                                >
+                                  Delete
+                                </button>
+                              </div>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => setDeleteDialog(invoice.id)}
-                              className="text-xs px-3 py-1.5 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-200 transition"
-                            >
-                              Delete
-                            </button>
                           </div>
                         </td>
                       </tr>

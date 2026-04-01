@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
 import { PortalShell } from '../components/PortalShell';
@@ -30,6 +30,12 @@ type CustomerRow = {
   createdAt: string;
   updatedAt: string;
   jobs: CustomerJob[];
+  vehicles?: Array<{
+    id: string;
+    rego: string;
+    vehicleBrand: string | null;
+    vehicleModel: string | null;
+  }>;
 };
 
 type CustomerGroup = {
@@ -226,6 +232,7 @@ export const CustomersPage = () => {
   const [editingCustomer, setEditingCustomer] = useState<CustomerRow | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
   const [visibleColumns, setVisibleColumns] =
     useState<Record<ColumnKey, boolean>>(() => loadVisibleColumns());
   const [columnWidths, setColumnWidths] =
@@ -235,6 +242,7 @@ export const CustomersPage = () => {
     startX: number;
     startWidth: number;
   } | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
   const { data: customers, isLoading, error, refetch } = useQuery<CustomerRow[]>({
     queryKey: ['customers', search],
@@ -265,6 +273,7 @@ export const CustomersPage = () => {
     mutationFn: async (id: string) => api.delete(`/customers/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['customers'] });
+      setOpenActionMenu(null);
       setDeleteDialog(null);
       showToast('Customer deleted successfully');
     },
@@ -292,21 +301,26 @@ export const CustomersPage = () => {
 
       const existing = groups.get(groupKey);
       if (!existing) {
+        const initialRegos = (customer.vehicles || []).map((vehicle) => normalizeRego(vehicle.rego)).filter(Boolean);
         groups.set(groupKey, {
           id: customer.id,
           primary: customer,
           memberIds: [customer.id],
-          regos: [normalizeRego(customer.rego)],
+          regos: initialRegos.length ? initialRegos : [normalizeRego(customer.rego)],
           jobs: [...(customer.jobs || [])],
         });
         continue;
       }
 
       existing.memberIds.push(customer.id);
-      const currentRego = normalizeRego(customer.rego);
-      if (currentRego && !existing.regos.includes(currentRego)) {
-        existing.regos.push(currentRego);
-      }
+      const currentRegos = (customer.vehicles || []).map((vehicle) => normalizeRego(vehicle.rego)).filter(Boolean);
+      const fallbackRego = normalizeRego(customer.rego);
+      const nextRegos = currentRegos.length ? currentRegos : fallbackRego ? [fallbackRego] : [];
+      nextRegos.forEach((rego) => {
+        if (rego && !existing.regos.includes(rego)) {
+          existing.regos.push(rego);
+        }
+      });
       existing.jobs.push(...(customer.jobs || []));
 
       if (toTimestamp(customer.updatedAt) > toTimestamp(existing.primary.updatedAt)) {
@@ -421,6 +435,31 @@ export const CustomersPage = () => {
     };
   }, [resizingColumn]);
 
+  useEffect(() => {
+    if (!openActionMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
+        setOpenActionMenu(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenActionMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [openActionMenu]);
+
   const startResize = (event: ReactPointerEvent<HTMLButtonElement>, key: ColumnWidthKey) => {
     event.preventDefault();
     event.stopPropagation();
@@ -476,14 +515,23 @@ export const CustomersPage = () => {
       />
 
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Customers</h1>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by rego, customer, phone, or email..."
-            className="input w-72"
-          />
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-semibold">All customers</h1>
+              <p className="text-xs text-white/60">{groupedCustomers.length} customers</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by rego, customer, phone, or email..."
+                  className="input w-72"
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
@@ -524,10 +572,6 @@ export const CustomersPage = () => {
           </div>
         ) : null}
 
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">All Customers ({groupedCustomers.length})</h2>
-        </div>
-
         {groupedCustomers.length === 0 ? (
           <EmptyState message="No customers found." />
         ) : (
@@ -535,7 +579,7 @@ export const CustomersPage = () => {
             <div className="overflow-x-auto">
               <div className="min-w-full" style={{ minWidth: `${gridMinWidth}px` }}>
                 <div
-                  className="hidden md:grid gap-4 bg-white/10 border-b border-white/10 px-4 py-3 text-sm font-semibold text-white/80"
+                  className="hidden md:grid gap-4 border-b border-white/10 bg-white/5 px-4 py-3 text-xs text-white/60"
                   style={{ gridTemplateColumns }}
                 >
                   <div className="relative">
@@ -570,7 +614,7 @@ export const CustomersPage = () => {
                       />
                     </div>
                   ))}
-                  <div className="sticky right-0 z-30 min-w-[140px] text-right border-l border-white/10 pl-3 pr-1 bg-[#2b2b2b] shadow-[-8px_0_12px_rgba(0,0,0,0.35)]">
+                  <div className="sticky right-0 z-30 min-w-[140px] text-right border-l border-white/10 pl-3 pr-1 bg-[#171717] shadow-[-8px_0_12px_rgba(0,0,0,0.35)]">
                     Actions
                   </div>
                 </div>
@@ -630,56 +674,77 @@ export const CustomersPage = () => {
                         {editingCustomer?.id === customer.id ? (
                           <div className="px-4 py-4 bg-white/5">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                              <input
-                                className="input"
-                                value={editingCustomer.rego}
-                                onChange={(e) => setEditingCustomer({ ...editingCustomer, rego: e.target.value })}
-                                placeholder="Rego"
-                              />
-                              <input
-                                className="input"
-                                value={editingCustomer.phone}
-                                onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })}
-                                placeholder="Phone"
-                              />
-                              <input
-                                className="input"
-                                value={editingCustomer.firstName}
-                                onChange={(e) =>
-                                  setEditingCustomer({ ...editingCustomer, firstName: e.target.value })
-                                }
-                                placeholder="First name"
-                              />
-                              <input
-                                className="input"
-                                value={editingCustomer.lastName}
-                                onChange={(e) => setEditingCustomer({ ...editingCustomer, lastName: e.target.value })}
-                                placeholder="Last name"
-                              />
-                              <input
-                                className="input"
-                                value={editingCustomer.vehicleBrand || ''}
-                                onChange={(e) =>
-                                  setEditingCustomer({ ...editingCustomer, vehicleBrand: e.target.value })
-                                }
-                                placeholder="Vehicle brand"
-                              />
-                              <input
-                                className="input"
-                                value={editingCustomer.vehicleModel || ''}
-                                onChange={(e) =>
-                                  setEditingCustomer({ ...editingCustomer, vehicleModel: e.target.value })
-                                }
-                                placeholder="Vehicle model"
-                              />
+                              <label className="flex flex-col gap-1">
+                                <span className="text-xs text-white/60">Rego</span>
+                                <input
+                                  className="input"
+                                  value={editingCustomer.rego}
+                                  onChange={(e) => setEditingCustomer({ ...editingCustomer, rego: e.target.value })}
+                                  placeholder="Rego"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-1">
+                                <span className="text-xs text-white/60">Phone</span>
+                                <input
+                                  className="input"
+                                  value={editingCustomer.phone}
+                                  onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })}
+                                  placeholder="Phone"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-1">
+                                <span className="text-xs text-white/60">First name</span>
+                                <input
+                                  className="input"
+                                  value={editingCustomer.firstName}
+                                  onChange={(e) =>
+                                    setEditingCustomer({ ...editingCustomer, firstName: e.target.value })
+                                  }
+                                  placeholder="First name"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-1">
+                                <span className="text-xs text-white/60">Last name</span>
+                                <input
+                                  className="input"
+                                  value={editingCustomer.lastName}
+                                  onChange={(e) => setEditingCustomer({ ...editingCustomer, lastName: e.target.value })}
+                                  placeholder="Last name"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-1">
+                                <span className="text-xs text-white/60">Vehicle brand</span>
+                                <input
+                                  className="input"
+                                  value={editingCustomer.vehicleBrand || ''}
+                                  onChange={(e) =>
+                                    setEditingCustomer({ ...editingCustomer, vehicleBrand: e.target.value })
+                                  }
+                                  placeholder="Vehicle brand"
+                                />
+                              </label>
+                              <label className="flex flex-col gap-1">
+                                <span className="text-xs text-white/60">Vehicle model</span>
+                                <input
+                                  className="input"
+                                  value={editingCustomer.vehicleModel || ''}
+                                  onChange={(e) =>
+                                    setEditingCustomer({ ...editingCustomer, vehicleModel: e.target.value })
+                                  }
+                                  placeholder="Vehicle model"
+                                />
+                              </label>
                             </div>
-                            <input
-                              type="email"
-                              className="input mb-3"
-                              value={editingCustomer.email}
-                              onChange={(e) => setEditingCustomer({ ...editingCustomer, email: e.target.value })}
-                              placeholder="Email"
-                            />
+                            <label className="mb-3 flex flex-col gap-1">
+                              <span className="text-xs text-white/60">Email</span>
+                              <input
+                                type="email"
+                                className="input"
+                                value={editingCustomer.email}
+                                onChange={(e) => setEditingCustomer({ ...editingCustomer, email: e.target.value })}
+                                placeholder="Email"
+                              />
+                            </label>
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleUpdate(editingCustomer)}
@@ -698,7 +763,9 @@ export const CustomersPage = () => {
                         ) : (
                           <>
                             <div
-                              className="group grid gap-4 px-4 py-3 hover:bg-white/5 transition cursor-pointer"
+                              className={`group relative grid gap-4 px-4 py-3 hover:bg-white/5 transition cursor-pointer ${
+                                openActionMenu === group.id ? 'z-40' : 'z-0'
+                              }`}
                               style={{ gridTemplateColumns }}
                               onClick={() => setExpandedRow(expandedRow === group.id ? null : group.id)}
                             >
@@ -727,25 +794,63 @@ export const CustomersPage = () => {
                                   {renderColumnCell(column.key)}
                                 </div>
                               ))}
-                              <div className="sticky right-0 z-20 min-w-[140px] flex items-center justify-end gap-2 border-l border-white/10 pl-3 pr-1 bg-[#121212] group-hover:bg-[#1a1a1a] shadow-[-8px_0_12px_rgba(0,0,0,0.35)]">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingCustomer(customer);
-                                  }}
-                                  className="px-2 py-1 text-xs rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white transition"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDeleteDialog(customer.id);
-                                  }}
-                                  className="px-2 py-1 text-xs rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-200 transition"
-                                >
-                                  Delete
-                                </button>
+                              <div
+                                className={`sticky right-0 min-w-[140px] flex items-center justify-end border-l border-white/10 pl-3 pr-1 bg-[#121212] group-hover:bg-[#1a1a1a] shadow-[-8px_0_12px_rgba(0,0,0,0.35)] ${
+                                  openActionMenu === group.id ? 'z-50' : 'z-20'
+                                }`}
+                                ref={openActionMenu === group.id ? actionMenuRef : null}
+                              >
+                                <div className="relative inline-flex justify-end">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenActionMenu((current) => (current === group.id ? null : group.id));
+                                    }}
+                                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
+                                  >
+                                    <span>Actions</span>
+                                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-brand-primary/50 text-[10px] text-brand-primary">
+                                      v
+                                    </span>
+                                  </button>
+                                  {openActionMenu === group.id && (
+                                    <div
+                                      className="absolute right-0 top-full z-[60] mt-2 min-w-[180px] rounded-2xl border border-white/10 bg-[#111111] p-2 shadow-2xl"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenActionMenu(null);
+                                          setEditingCustomer(customer);
+                                        }}
+                                        className="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs text-white/80 transition hover:bg-white/5 hover:text-white"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenActionMenu(null);
+                                          setExpandedRow((current) => (current === group.id ? null : group.id));
+                                        }}
+                                        className="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs text-white/80 transition hover:bg-white/5 hover:text-white"
+                                      >
+                                        {expandedRow === group.id ? 'Hide details' : 'View details'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenActionMenu(null);
+                                          setDeleteDialog(customer.id);
+                                        }}
+                                        className="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs text-red-200 transition hover:bg-red-500/10"
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
                             {expandedRow === group.id ? (

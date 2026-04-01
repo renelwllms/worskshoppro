@@ -21,6 +21,19 @@ export class QuotesService {
     private readonly graph: GraphService,
   ) {}
 
+  private getQuoteInclude() {
+    return {
+      items: true,
+      customer: true,
+      job: {
+        include: {
+          customer: true,
+          vehicle: true,
+        },
+      },
+    } as const;
+  }
+
   async create(dto: CreateQuoteDto) {
     const expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : undefined;
     const total = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
@@ -39,14 +52,14 @@ export class QuotesService {
           })),
         },
       },
-      include: { items: true, customer: true, job: true },
+      include: this.getQuoteInclude(),
     });
     return quote;
   }
 
   findAll() {
     return this.prisma.quote.findMany({
-      include: { customer: true, job: true, items: true },
+      include: this.getQuoteInclude(),
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -54,7 +67,7 @@ export class QuotesService {
   findOne(id: string) {
     return this.prisma.quote.findUnique({
       where: { id },
-      include: { items: true, customer: true, job: true },
+      include: this.getQuoteInclude(),
     });
   }
 
@@ -88,7 +101,7 @@ export class QuotesService {
             }
           : undefined,
       },
-      include: { items: true, customer: true, job: true },
+      include: this.getQuoteInclude(),
     });
   }
 
@@ -100,7 +113,7 @@ export class QuotesService {
   async generatePdf(id: string, payload?: { notes?: string; terms?: string; subject?: string }) {
     const quote = await this.prisma.quote.findUnique({
       where: { id },
-      include: { items: true, customer: true, job: true },
+      include: this.getQuoteInclude(),
     });
     if (!quote) throw new NotFoundException('Quote not found');
     const settings = await this.prisma.setting.findUnique({ where: { id: 1 } });
@@ -346,7 +359,7 @@ export class QuotesService {
   async sendQuoteEmail(id: string) {
     const quote = await this.prisma.quote.findUnique({
       where: { id },
-      include: { items: true, customer: true, job: true },
+      include: this.getQuoteInclude(),
     });
     if (!quote) throw new NotFoundException('Quote not found');
 
@@ -449,7 +462,7 @@ export class QuotesService {
   private async createInvoiceFromQuote(quoteId: string) {
     const quote = await this.prisma.quote.findUnique({
       where: { id: quoteId },
-      include: { items: true, customer: true, job: true },
+      include: this.getQuoteInclude(),
     });
     if (!quote) throw new NotFoundException('Quote not found');
     await this.prisma.$transaction(

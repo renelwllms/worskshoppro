@@ -60,6 +60,7 @@ export class InvoicesService {
       job: {
         include: {
           customer: true,
+          vehicle: true,
           selectedService: true,
           selectedServicePackage: true,
           upsells: { include: { upsell: true } },
@@ -70,6 +71,7 @@ export class InvoicesService {
           job: {
             include: {
               customer: true,
+              vehicle: true,
               selectedService: true,
               selectedServicePackage: true,
               upsells: { include: { upsell: true } },
@@ -100,6 +102,7 @@ export class InvoicesService {
       where: { id: { in: requestedJobIds } },
       include: {
         customer: true,
+        vehicle: true,
         selectedService: true,
         selectedServicePackage: true,
         upsells: { include: { upsell: true } },
@@ -234,13 +237,14 @@ export class InvoicesService {
   private buildInvoiceJobDetailBlocks(invoice: any) {
     return this.getInvoiceAssociatedJobs(invoice)
       .map((job: any) => {
-        const vehicle = [job?.customer?.vehicleBrand, job?.customer?.vehicleModel].filter(Boolean).join(' ');
+        const jobVehicle = job?.vehicle ?? job?.customer;
+        const vehicle = [jobVehicle?.vehicleBrand, jobVehicle?.vehicleModel].filter(Boolean).join(' ');
         return {
           title: this.buildJobHeading(job),
           lines: [
             job?.selectedService?.name ? `Service booked: ${job.selectedService.name}` : '',
             job?.selectedServicePackage?.name ? `Package booked: ${job.selectedServicePackage.name}` : '',
-            job?.customer?.rego ? `Rego: ${job.customer.rego}` : '',
+            jobVehicle?.rego ? `Rego: ${jobVehicle.rego}` : '',
             vehicle ? `Vehicle: ${vehicle}` : '',
           ].filter(Boolean),
         };
@@ -258,7 +262,12 @@ export class InvoicesService {
               include: {
                 items: true,
                 customer: true,
-                job: true,
+                job: {
+                  include: {
+                    customer: true,
+                    vehicle: true,
+                  },
+                },
               },
             })
           : null;

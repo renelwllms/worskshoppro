@@ -95,19 +95,35 @@ model User {
 
 model Customer {
   id        String   @id @default(cuid())
-  rego      String   @unique
+  rego      String?
   vehicleBrand String?
   vehicleModel String?
   firstName String
   lastName  String
   phone     String
   email     String
+  vehicles  Vehicle[]
   jobs      Job[]
   quotes    Quote[]
   invoices  Invoice[]
   serviceSchedules ServiceSchedule[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Vehicle {
+  id           String   @id @default(cuid())
+  rego         String   @unique
+  vehicleBrand String?
+  vehicleModel String?
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  jobs         Job[]
+  serviceSchedules ServiceSchedule[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([customerId])
 }
 
 model Job {
@@ -121,6 +137,8 @@ model Job {
   serviceType     String?
   customerId      String
   customer        Customer     @relation(fields: [customerId], references: [id])
+  vehicleId       String?
+  vehicle         Vehicle?     @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   assigneeId      String?
   assignee        User?        @relation("AssignedJobs", fields: [assigneeId], references: [id])
   images          JobImage[]
@@ -359,6 +377,8 @@ model ServiceSchedule {
   id            String       @id @default(cuid())
   customerId    String
   customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  vehicleId     String
+  vehicle       Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   type          ScheduleType
   title         String?
   dueDate       DateTime
@@ -370,7 +390,8 @@ model ServiceSchedule {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  @@unique([customerId, type])
+  @@unique([vehicleId, type])
+  @@index([customerId])
   @@index([dueDate])
   @@index([type])
 }

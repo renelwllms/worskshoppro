@@ -104,12 +104,15 @@ const buildInvoiceSubjectFromJobs = (jobs: any[]) => {
   return `${firstLabel} + ${jobs.length - 1} more`;
 };
 
+const getJobVehicle = (job: any) => job?.vehicle ?? job?.customer ?? {};
+
 const buildJobDetailLines = (job: any) => {
-  const vehicle = [job?.customer?.vehicleBrand, job?.customer?.vehicleModel].filter(Boolean).join(' ');
+  const jobVehicle = getJobVehicle(job);
+  const vehicle = [jobVehicle?.vehicleBrand, jobVehicle?.vehicleModel].filter(Boolean).join(' ');
   return [
     job?.selectedService?.name ? `Service booked: ${job.selectedService.name}` : '',
     job?.selectedServicePackage?.name ? `Package booked: ${job.selectedServicePackage.name}` : '',
-    job?.customer?.rego ? `Rego: ${job.customer.rego}` : '',
+    jobVehicle?.rego ? `Rego: ${jobVehicle.rego}` : '',
     vehicle ? `Vehicle: ${vehicle}` : '',
   ].filter(Boolean);
 };
@@ -140,6 +143,8 @@ const getJobInvoiceStatusLabel = (job: any, currentInvoiceId?: string) => {
   }
   return `Invoiced x${linkedInvoices.length}`;
 };
+
+const canEmailInvoice = (invoice: any) => invoice?.status !== 'CANCELLED';
 
 export const InvoiceDetailPage = () => {
   const { id } = useParams();
@@ -373,6 +378,7 @@ export const InvoiceDetailPage = () => {
   }
 
   const canEdit = invoice.status === 'DRAFT';
+  const canResend = !canEdit && canEmailInvoice(invoice);
   const invoiceNumber = getInvoiceNumberLabel(invoice);
   const invoiceDate = invoice.createdAt ? new Date(invoice.createdAt).toISOString().slice(0, 10) : '';
 
@@ -409,7 +415,7 @@ export const InvoiceDetailPage = () => {
                           <div>
                             <p className="text-sm font-semibold text-white">{job.title}</p>
                             <p className="text-xs text-white/50">
-                              {job.customer?.rego || '-'} · {getJobInvoiceStatusLabel(job, id)}
+                              {getJobVehicle(job).rego || '-'} · {getJobInvoiceStatusLabel(job, id)}
                             </p>
                           </div>
                           {canEdit && (
@@ -552,6 +558,15 @@ export const InvoiceDetailPage = () => {
                   Save & send
                 </button>
               </>
+            )}
+            {canResend && (
+              <button
+                type="button"
+                onClick={() => sendInvoice.mutate()}
+                className="text-xs px-3 py-1.5 rounded-full bg-brand-primary hover:bg-brand-accent text-black transition"
+              >
+                Resend email
+              </button>
             )}
           </div>
         </div>
