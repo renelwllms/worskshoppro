@@ -85,6 +85,14 @@ type CustomerLookupJob = {
   regoExpiryDate?: string | null;
 };
 
+type CustomerLookupVehicle = {
+  id: string;
+  rego?: string | null;
+  vehicleBrand?: string | null;
+  vehicleModel?: string | null;
+  jobs?: CustomerLookupJob[];
+};
+
 type CustomerLookupMatch = {
   id: string;
   rego?: string;
@@ -95,6 +103,7 @@ type CustomerLookupMatch = {
   phone?: string | null;
   email?: string | null;
   jobs?: CustomerLookupJob[];
+  vehicles?: CustomerLookupVehicle[];
 };
 
 type ComplianceSnapshot = {
@@ -128,6 +137,20 @@ const formatDateLabel = (value?: string) => {
 };
 
 const isWofServiceName = (name?: string) => /(?:\bwof\b|warranty of fitness)/i.test(String(name || ''));
+
+const findVehicleForRego = (customer: CustomerLookupMatch | undefined, rego: string) =>
+  customer?.vehicles?.find((vehicle) => String(vehicle?.rego || '').toLowerCase() === rego.toLowerCase())
+  ?? (String(customer?.rego || '').toLowerCase() === rego.toLowerCase()
+    ? {
+        id: '',
+        rego: customer?.rego,
+        vehicleBrand: customer?.vehicleBrand,
+        vehicleModel: customer?.vehicleModel,
+        jobs: customer?.jobs,
+      }
+    : undefined);
+
+const getVehicleSnapshot = (job: any) => job?.vehicle ?? job?.customer ?? {};
 
 const formatDateValue = (value?: string | Date | null) => {
   if (!value) return 'Not set';
@@ -228,17 +251,23 @@ export const JobsPage = () => {
       try {
         const response = await api.get('/customers', { params: { search: rego } });
         const match: CustomerLookupMatch | undefined = response.data?.find(
-          (customer: CustomerLookupMatch) => customer.rego?.toLowerCase() === rego.toLowerCase()
+          (customer: CustomerLookupMatch) => Boolean(findVehicleForRego(customer, rego))
         ) || response.data?.[0];
         if (match) {
+          const matchedVehicle = findVehicleForRego(match, rego) ?? {
+            rego: match.rego,
+            vehicleBrand: match.vehicleBrand,
+            vehicleModel: match.vehicleModel,
+            jobs: match.jobs,
+          };
           autoPopulatedRef.current = true;
           setLookupStatus('found');
-          const normalizedBrand = (match.vehicleBrand ?? '').trim();
-          const normalizedModel = (match.vehicleModel ?? '').trim();
+          const normalizedBrand = (matchedVehicle.vehicleBrand ?? '').trim();
+          const normalizedModel = (matchedVehicle.vehicleModel ?? '').trim();
           const brandKnown = VEHICLE_BRANDS.includes(normalizedBrand);
           const baseModels = normalizedBrand ? (VEHICLE_MODELS[normalizedBrand] || []) : [];
           const modelKnown = normalizedModel && baseModels.includes(normalizedModel);
-          const latestJob = Array.isArray(match.jobs) ? match.jobs[0] : undefined;
+          const latestJob = Array.isArray(matchedVehicle.jobs) ? matchedVehicle.jobs[0] : undefined;
           const loadedWofExpiryDate = toDateInputValue(latestJob?.wofExpiryDate);
           const loadedRegoExpiryDate = toDateInputValue(latestJob?.regoExpiryDate);
           const hasExpiredLoadedCompliance = isExpiredDate(loadedWofExpiryDate) || isExpiredDate(loadedRegoExpiryDate);
@@ -301,10 +330,29 @@ export const JobsPage = () => {
     mutationFn: async (payload: any) => {
       const customerSearch = await api.get('/customers', { params: { search: payload.rego } });
       const regoValue = String(payload.rego || '').toLowerCase();
-      const match = customerSearch.data?.find(
-        (customer: any) => String(customer?.rego || '').toLowerCase() === regoValue
+      const regoMatch = customerSearch.data?.find(
+        (customer: any) =>
+          (customer?.vehicles || []).some((vehicle: any) => String(vehicle?.rego || '').toLowerCase() === regoValue)
       );
-      let customerId = match?.id;
+      let customerRecord = regoMatch;
+
+      if (!customerRecord) {
+        const exactEmail = String(payload.email || '').trim().toLowerCase();
+        const exactPhone = String(payload.phone || '').trim();
+        const contactSearches = await Promise.all([
+          exactEmail ? api.get('/customers', { params: { search: exactEmail } }) : Promise.resolve({ data: [] }),
+          exactPhone ? api.get('/customers', { params: { search: exactPhone } }) : Promise.resolve({ data: [] }),
+        ]);
+        customerRecord =
+          contactSearches.flatMap((response: any) => response.data || []).find((customer: any) =>
+            (exactEmail && String(customer?.email || '').trim().toLowerCase() === exactEmail)
+            || (exactPhone && String(customer?.phone || '').trim() === exactPhone),
+          ) ?? null;
+      }
+
+      let customerId = customerRecord?.id;
+      let vehicleId = findVehicleForRego(customerRecord, payload.rego)?.id || undefined;
+
       if (!customerId) {
         const customer = await api.post('/customers', {
           rego: payload.rego,
@@ -316,8 +364,9 @@ export const JobsPage = () => {
           email: payload.email,
         });
         customerId = customer.data.id;
+        vehicleId = findVehicleForRego(customer.data, payload.rego)?.id || undefined;
       } else {
-        await api.patch(`/customers/${customerId}`, {
+        const updatedCustomer = await api.patch(`/customers/${customerId}`, {
           rego: payload.rego,
           vehicleBrand: payload.vehicleBrand,
           vehicleModel: payload.vehicleModel,
@@ -326,9 +375,11 @@ export const JobsPage = () => {
           phone: payload.phone,
           email: payload.email,
         });
+        vehicleId = findVehicleForRego(updatedCustomer.data, payload.rego)?.id || undefined;
       }
       return api.post('/jobs', {
         customerId,
+        vehicleId,
         title: payload.title,
         description: payload.description,
         serviceType: payload.serviceType,
@@ -613,7 +664,7 @@ export const JobsPage = () => {
                 <p className="text-xs text-white/60">Job Details</p>
                 <h3 className="text-lg font-semibold text-white">{detailModalJob.title || 'Untitled Job'}</h3>
                 <p className="text-xs text-white/60">
-                  {detailModalJob.customer?.firstName} {detailModalJob.customer?.lastName} • {detailModalJob.customer?.rego}
+                  {detailModalJob.customer?.firstName} {detailModalJob.customer?.lastName} • {getVehicleSnapshot(detailModalJob).rego}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -655,9 +706,9 @@ export const JobsPage = () => {
                   <h4 className="text-sm font-semibold text-brand-primary">Customer & Vehicle</h4>
                   <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-1 text-sm">
                     <p><span className="text-white/60">Name:</span> {detailModalJob.customer?.firstName} {detailModalJob.customer?.lastName}</p>
-                    <p><span className="text-white/60">Rego:</span> {detailModalJob.customer?.rego || 'Not set'}</p>
-                    <p><span className="text-white/60">Brand:</span> {detailModalJob.customer?.vehicleBrand || 'Not set'}</p>
-                    <p><span className="text-white/60">Model:</span> {detailModalJob.customer?.vehicleModel || 'Not set'}</p>
+                    <p><span className="text-white/60">Rego:</span> {getVehicleSnapshot(detailModalJob).rego || 'Not set'}</p>
+                    <p><span className="text-white/60">Brand:</span> {getVehicleSnapshot(detailModalJob).vehicleBrand || 'Not set'}</p>
+                    <p><span className="text-white/60">Model:</span> {getVehicleSnapshot(detailModalJob).vehicleModel || 'Not set'}</p>
                     <p><span className="text-white/60">Vehicle type:</span> {detailModalJob.vehicleType || 'Not set'}</p>
                     <p><span className="text-white/60">Phone:</span> {detailModalJob.customer?.phone || 'Not set'}</p>
                     <p><span className="text-white/60">Email:</span> {detailModalJob.customer?.email || 'Not set'}</p>
@@ -1567,7 +1618,7 @@ export const JobsPage = () => {
                         {/* Rego */}
                         <div className="md:col-span-2 flex items-center">
                           <span className="px-2 py-1 text-xs font-semibold rounded-md bg-brand-primary/20 text-brand-primary border border-brand-primary/30">
-                            {job.customer?.rego}
+                            {getVehicleSnapshot(job).rego}
                           </span>
                         </div>
 

@@ -220,6 +220,7 @@ export class JobsService {
       where: { id },
       include: {
         customer: true,
+        vehicle: true,
         selectedService: true,
         selectedServicePackage: {
           include: {
@@ -299,7 +300,8 @@ export class JobsService {
     y += Math.max(100, metaBoxHeight) + 16;
 
     const customerName = `${job.customer.firstName || ''} ${job.customer.lastName || ''}`.trim() || 'Not set';
-    const vehicle = [job.customer.vehicleBrand, job.customer.vehicleModel].filter(Boolean).join(' ') || 'Not set';
+    const jobVehicle = job.vehicle ?? job.customer;
+    const vehicle = [jobVehicle?.vehicleBrand, jobVehicle?.vehicleModel].filter(Boolean).join(' ') || 'Not set';
     const vehicleType = job.vehicleType
       ? `${job.vehicleType.slice(0, 1)}${job.vehicleType.slice(1).toLowerCase()}`
       : 'Not set';
@@ -308,7 +310,7 @@ export class JobsService {
 
     const customerBoxHeight = drawInfoBox(margin, y, leftWidth, 'Customer & Vehicle', [
       `Name: ${customerName}`,
-      `Rego: ${job.customer.rego || 'Not set'}`,
+      `Rego: ${jobVehicle?.rego || 'Not set'}`,
       `Vehicle: ${vehicle}`,
       `Vehicle type: ${vehicleType}`,
       `Phone: ${job.customer.phone || 'Not set'}`,
@@ -444,6 +446,18 @@ export class JobsService {
     const dueDate = dto.dueDate ? new Date(dto.dueDate) : undefined;
     const wofExpiryDate = dto.wofExpiryDate ? new Date(dto.wofExpiryDate) : undefined;
     const regoExpiryDate = dto.regoExpiryDate ? new Date(dto.regoExpiryDate) : undefined;
+    if (dto.vehicleId) {
+      const vehicle = await this.prisma.vehicle.findUnique({
+        where: { id: dto.vehicleId },
+        select: { id: true, customerId: true },
+      });
+      if (!vehicle) {
+        throw new NotFoundException('Selected vehicle not found');
+      }
+      if (vehicle.customerId !== dto.customerId) {
+        throw new BadRequestException('Selected vehicle does not belong to the selected customer');
+      }
+    }
     if (dto.selectedServiceId && dto.selectedServicePackageId) {
       throw new BadRequestException('A job cannot have both service and service package selected');
     }
@@ -508,6 +522,7 @@ export class JobsService {
       wofExpiryDate,
       regoExpiryDate,
       customerId: dto.customerId,
+      vehicleId: dto.vehicleId ?? null,
       selectedServiceId: service?.id ?? null,
       selectedServicePackageId: servicePackage?.id ?? null,
       vehicleType,
@@ -535,6 +550,7 @@ export class JobsService {
           },
           include: {
             customer: true,
+            vehicle: true,
             images: true,
             selectedService: true,
             selectedServicePackage: {
@@ -565,6 +581,7 @@ export class JobsService {
             { title: { contains: search, mode: 'insensitive' } },
             { description: { contains: search, mode: 'insensitive' } },
             { customer: { rego: { contains: search, mode: 'insensitive' } } },
+            { vehicle: { rego: { contains: search, mode: 'insensitive' } } },
           ],
         }
       : {};
@@ -572,6 +589,7 @@ export class JobsService {
       where: filters,
       include: {
         customer: true,
+        vehicle: true,
         images: true,
         selectedService: true,
         selectedServicePackage: true,
@@ -588,6 +606,7 @@ export class JobsService {
       where: { id },
       include: {
         customer: true,
+        vehicle: true,
         images: true,
         quotes: true,
         invoices: true,
@@ -653,6 +672,7 @@ export class JobsService {
       data,
       include: {
         customer: true,
+        vehicle: true,
         images: true,
         selectedService: true,
         selectedServicePackage: true,
@@ -738,7 +758,7 @@ export class JobsService {
 
     const overdue = await this.prisma.job.findMany({
       where: { dueDate: { lt: new Date() }, status: { notIn: [JobStatus.COMPLETED, JobStatus.CANCELLED] } },
-      include: { customer: true },
+      include: { customer: true, vehicle: true },
     });
 
     return { currentMonthCount, monthlyTrend, overdue };

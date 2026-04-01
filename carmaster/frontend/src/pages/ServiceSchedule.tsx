@@ -28,6 +28,12 @@ type ScheduleItem = {
     phone: string;
     rego: string;
   };
+  vehicle: {
+    id: string;
+    rego: string;
+    vehicleBrand: string | null;
+    vehicleModel: string | null;
+  };
   sourceJob: {
     id: string;
     title: string;
@@ -354,7 +360,7 @@ export const ServiceSchedulePage = () => {
                       <td className="py-2 pr-3 align-top">
                         {item.customer.firstName} {item.customer.lastName}
                       </td>
-                      <td className="py-2 pr-3 align-top">{item.customer.rego}</td>
+                      <td className="py-2 pr-3 align-top">{item.vehicle.rego || item.customer.rego}</td>
                       <td className="py-2 pr-3 align-top">
                         {formatDate(item.dueDate)}
                         <div className="text-xs text-white/60">

@@ -5,6 +5,10 @@ export class CreateJobDto {
   @IsString()
   customerId: string;
 
+  @IsOptional()
+  @IsString()
+  vehicleId?: string;
+
   @IsString()
   title: string;
 
